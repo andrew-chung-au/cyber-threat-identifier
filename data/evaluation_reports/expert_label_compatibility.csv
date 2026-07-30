@@ -1,0 +1,291 @@
+attack_id,status,technique_name,dataset_splits
+T1001,active,Data Obfuscation,"train,test"
+T1001.002,active,Steganography,train
+T1003,active,OS Credential Dumping,"train,test"
+T1003.001,active,LSASS Memory,"train,dev,test"
+T1003.003,active,NTDS,train
+T1003.004,active,LSA Secrets,test
+T1003.008,active,/etc/passwd and /etc/shadow,train
+T1005,active,Data from Local System,"train,test"
+T1007,active,System Service Discovery,train
+T1008,active,Fallback Channels,test
+T1014,active,Rootkit,"train,test"
+T1016,active,System Network Configuration Discovery,"train,dev,test"
+T1018,active,Remote System Discovery,"train,test"
+T1020,active,Automated Exfiltration,"train,test"
+T1020.001,active,Traffic Duplication,train
+T1021,active,Remote Services,"train,test"
+T1021.001,active,Remote Desktop Protocol,test
+T1021.002,active,SMB/Windows Admin Shares,"train,test"
+T1021.004,active,SSH,"train,test"
+T1021.005,active,VNC,"train,test"
+T1025,active,Data from Removable Media,"train,test"
+T1027,active,Obfuscated Files or Information,"train,test"
+T1027.002,active,Software Packing,"train,test"
+T1027.003,active,Steganography,"train,dev"
+T1027.004,active,Compile After Delivery,test
+T1027.005,active,Indicator Removal from Tools,test
+T1027.006,active,HTML Smuggling,dev
+T1027.009,active,Embedded Payloads,test
+T1030,active,Data Transfer Size Limits,train
+T1033,active,System Owner/User Discovery,"train,dev,test"
+T1036,active,Masquerading,"dev,test"
+T1036.002,active,Right-to-Left Override,dev
+T1036.003,active,Rename Legitimate Utilities,dev
+T1036.004,active,Masquerade Task or Service,test
+T1036.005,active,Match Legitimate Resource Name or Location,"train,test"
+T1036.007,active,Double File Extension,test
+T1037.002,active,Login Hook,dev
+T1039,active,Data from Network Shared Drive,train
+T1040,active,Network Sniffing,test
+T1041,active,Exfiltration Over C2 Channel,"train,test"
+T1043,deprecated,Commonly Used Port,train
+T1046,active,Network Service Discovery,"train,test"
+T1047,active,Windows Management Instrumentation,dev
+T1048,active,Exfiltration Over Alternative Protocol,test
+T1048.002,active,Exfiltration Over Asymmetric Encrypted Non-C2 Protocol,train
+T1048.003,active,Exfiltration Over Unencrypted Non-C2 Protocol,train
+T1049,active,System Network Connections Discovery,"train,dev,test"
+T1052,active,Exfiltration Over Physical Medium,test
+T1052.001,active,Exfiltration over USB,test
+T1053,active,Scheduled Task/Job,"train,test"
+T1053.003,active,Cron,train
+T1053.005,active,Scheduled Task,"train,test"
+T1055,active,Process Injection,"train,test"
+T1055.001,active,Dynamic-link Library Injection,"train,dev,test"
+T1055.002,active,Portable Executable Injection,"train,dev,test"
+T1055.003,active,Thread Execution Hijacking,"train,test"
+T1055.011,active,Extra Window Memory Injection,dev
+T1055.012,active,Process Hollowing,"train,test"
+T1056,active,Input Capture,"train,test"
+T1056.001,active,Keylogging,"train,dev,test"
+T1056.003,active,Web Portal Capture,train
+T1056.004,active,Credential API Hooking,train
+T1057,active,Process Discovery,"train,dev,test"
+T1059,active,Command and Scripting Interpreter,"train,test"
+T1059.001,active,PowerShell,"train,dev,test"
+T1059.003,active,Windows Command Shell,"train,test"
+T1059.004,active,Unix Shell,"train,test"
+T1059.005,active,Visual Basic,"train,test"
+T1059.006,active,Python,"train,test"
+T1059.007,active,JavaScript,"train,test"
+T1059.008,active,Network Device CLI,train
+T1061,deprecated,Graphical User Interface,train
+T1064,deprecated,Scripting,train
+T1068,active,Exploitation for Privilege Escalation,"train,test"
+T1069,active,Permission Groups Discovery,train
+T1070,active,Indicator Removal,"train,dev"
+T1070.001,revoked,Clear Windows Event Logs,train
+T1070.003,active,Clear Command History,train
+T1070.004,active,File Deletion,"train,test"
+T1070.006,active,Timestomp,train
+T1071,active,Application Layer Protocol,"train,dev,test"
+T1071.001,active,Web Protocols,test
+T1071.004,active,DNS,test
+T1074,active,Data Staged,"train,test"
+T1074.001,active,Local Data Staging,test
+T1074.002,active,Remote Data Staging,"train,dev"
+T1078,active,Valid Accounts,"train,dev,test"
+T1078.001,active,Default Accounts,train
+T1078.002,active,Domain Accounts,"train,test"
+T1078.003,active,Local Accounts,train
+T1080,active,Taint Shared Content,train
+T1082,active,System Information Discovery,"train,dev,test"
+T1083,active,File and Directory Discovery,"train,dev,test"
+T1087,active,Account Discovery,test
+T1090,active,Proxy,"train,test"
+T1090.001,active,Internal Proxy,test
+T1090.002,active,External Proxy,test
+T1090.003,active,Multi-hop Proxy,"train,dev,test"
+T1090.004,active,Domain Fronting,train
+T1091,active,Replication Through Removable Media,"train,test"
+T1095,active,Non-Application Layer Protocol,"train,test"
+T1098,active,Account Manipulation,train
+T1098.002,active,Additional Email Delegate Permissions,train
+T1098.004,active,SSH Authorized Keys,train
+T1102,active,Web Service,"train,test"
+T1102.002,active,Bidirectional Communication,train
+T1102.003,active,One-Way Communication,train
+T1104,active,Multi-Stage Channels,test
+T1105,active,Ingress Tool Transfer,"train,test"
+T1106,active,Native API,test
+T1110,active,Brute Force,train
+T1110.001,active,Password Guessing,dev
+T1110.002,active,Password Cracking,train
+T1110.003,active,Password Spraying,"train,dev"
+T1112,active,Modify Registry,"train,test"
+T1113,active,Screen Capture,"train,test"
+T1114,active,Email Collection,train
+T1114.002,active,Remote Email Collection,train
+T1115,active,Clipboard Data,train
+T1119,active,Automated Collection,test
+T1123,active,Audio Capture,test
+T1124,active,System Time Discovery,train
+T1125,active,Video Capture,train
+T1129,active,Shared Modules,train
+T1132,active,Data Encoding,"train,dev,test"
+T1133,active,External Remote Services,"train,dev"
+T1134,active,Access Token Manipulation,test
+T1134.001,active,Token Impersonation/Theft,test
+T1134.002,active,Create Process with Token,test
+T1135,active,Network Share Discovery,"train,dev,test"
+T1136.001,active,Local Account,train
+T1136.002,active,Domain Account,train
+T1136.003,active,Cloud Account,train
+T1137.001,active,Office Template Macros,train
+T1140,active,Deobfuscate/Decode Files or Information,"train,test"
+T1176,active,Software Extensions,"train,test"
+T1185,active,Browser Session Hijacking,train
+T1189,active,Drive-by Compromise,"train,test"
+T1190,active,Exploit Public-Facing Application,"train,test"
+T1195,active,Supply Chain Compromise,train
+T1195.002,active,Compromise Software Supply Chain,train
+T1197,active,BITS Jobs,train
+T1199,active,Trusted Relationship,train
+T1202,active,Indirect Command Execution,"train,dev"
+T1203,active,Exploitation for Client Execution,"train,dev,test"
+T1204,active,User Execution,"train,test"
+T1204.001,active,Malicious Link,"train,dev,test"
+T1204.002,active,Malicious File,"train,test"
+T1205.002,active,Socket Filters,test
+T1207,active,Rogue Domain Controller,"train,dev"
+T1210,active,Exploitation of Remote Services,"train,dev,test"
+T1211,active,Exploitation for Stealth,"train,test"
+T1212,active,Exploitation for Credential Access,"train,dev"
+T1216,active,System Script Proxy Execution,train
+T1217,active,Browser Information Discovery,train
+T1218,active,System Binary Proxy Execution,train
+T1218.002,active,Control Panel,train
+T1218.004,active,InstallUtil,"train,dev"
+T1218.005,active,Mshta,"train,test"
+T1218.007,active,Msiexec,train
+T1218.008,active,Odbcconf,train
+T1218.010,active,Regsvr32,"train,dev"
+T1218.011,active,Rundll32,"train,dev,test"
+T1218.013,active,Mavinject,train
+T1219,active,Remote Access Tools,"train,test"
+T1220,active,XSL Script Processing,train
+T1221,active,Template Injection,train
+T1222.001,active,Windows Permissions,test
+T1222.002,active,Linux and Mac Permissions,train
+T1480,active,Execution Guardrails,"train,test"
+T1484,active,Domain or Tenant Policy Modification,train
+T1484.001,active,Group Policy Modification,"train,dev"
+T1485,active,Data Destruction,test
+T1486,active,Data Encrypted for Impact,"train,dev,test"
+T1489,active,Service Stop,"train,test"
+T1490,active,Inhibit System Recovery,train
+T1496,active,Resource Hijacking,"train,test"
+T1497,active,Virtualization/Sandbox Evasion,train
+T1497.001,active,System Checks,train
+T1497.003,active,Time Based Checks,train
+T1499.004,active,Application or System Exploitation,"train,test"
+T1505,active,Server Software Component,train
+T1505.003,active,Web Shell,"train,dev,test"
+T1505.004,active,IIS Components,test
+T1518,active,Software Discovery,test
+T1518.001,active,Security Software Discovery,"train,test"
+T1528,active,Steal Application Access Token,dev
+T1530,active,Data from Cloud Storage,"train,dev"
+T1534,active,Internal Spearphishing,train
+T1537,active,Transfer Data to Cloud Account,train
+T1539,active,Steal Web Session Cookie,train
+T1542.001,active,System Firmware,train
+T1543,active,Create or Modify System Process,"train,test"
+T1543.001,active,Launch Agent,train
+T1543.003,active,Windows Service,"train,test"
+T1546,active,Event Triggered Execution,train
+T1546.001,active,Change Default File Association,train
+T1546.013,active,PowerShell Profile,"train,dev"
+T1547,active,Boot or Logon Autostart Execution,"dev,test"
+T1547.001,active,Registry Run Keys / Startup Folder,"train,test"
+T1547.008,active,LSASS Driver,dev
+T1547.009,active,Shortcut Modification,"train,test"
+T1548.002,active,Bypass User Account Control,"train,test"
+T1550.002,active,Pass the Hash,train
+T1550.004,active,Web Session Cookie,train
+T1552.001,active,Credentials In Files,"train,test"
+T1552.004,active,Private Keys,"train,dev"
+T1552.006,active,Group Policy Preferences,train
+T1553,active,Subvert Trust Controls,train
+T1553.001,active,Gatekeeper Bypass,"train,dev"
+T1553.005,active,Mark-of-the-Web Bypass,"train,dev"
+T1554,active,Compromise Host Software Binary,train
+T1555,active,Credentials from Password Stores,"train,test"
+T1555.003,active,Credentials from Web Browsers,"train,dev"
+T1556.001,active,Domain Controller Authentication,train
+T1557.001,active,Name Resolution Poisoning and SMB Relay,train
+T1558.003,active,Kerberoasting,train
+T1559.001,active,Component Object Model,test
+T1560,active,Archive Collected Data,"train,test"
+T1560.001,active,Archive via Utility,"train,test"
+T1561,active,Disk Wipe,train
+T1561.002,active,Disk Structure Wipe,"train,test"
+T1562,revoked,Impair Defenses,train
+T1562.001,revoked,Disable or Modify Tools,"train,dev,test"
+T1562.004,revoked,Disable or Modify System Firewall,"train,test"
+T1562.009,revoked,Safe Mode Boot,dev
+T1564,active,Hide Artifacts,train
+T1564.001,active,Hidden Files and Directories,test
+T1564.003,active,Hidden Window,"train,dev"
+T1566,active,Phishing,"train,dev,test"
+T1566.001,active,Spearphishing Attachment,"train,test"
+T1566.002,active,Spearphishing Link,"train,dev,test"
+T1566.003,active,Spearphishing via Service,"train,test"
+T1567.002,active,Exfiltration to Cloud Storage,"train,dev,test"
+T1569,active,System Services,test
+T1569.002,active,Service Execution,"train,test"
+T1570,active,Lateral Tool Transfer,"train,test"
+T1571,active,Non-Standard Port,"train,test"
+T1572,active,Protocol Tunneling,"train,test"
+T1573,active,Encrypted Channel,"train,test"
+T1573.001,active,Symmetric Cryptography,test
+T1574,active,Hijack Execution Flow,train
+T1574.001,active,DLL,train
+T1574.002,revoked,DLL Side-Loading,"train,test"
+T1574.005,active,Executable Installer File Permissions Weakness,train
+T1574.011,active,Services Registry Permissions Weakness,train
+T1580,active,Cloud Infrastructure Discovery,dev
+T1583,active,Acquire Infrastructure,train
+T1583.001,active,Domains,"train,test"
+T1583.002,active,DNS Server,"train,dev,test"
+T1583.003,active,Virtual Private Server,train
+T1583.004,active,Server,train
+T1584.001,active,Domains,train
+T1584.002,active,DNS Server,train
+T1584.003,active,Virtual Private Server,train
+T1584.004,active,Server,test
+T1584.005,active,Botnet,train
+T1584.006,active,Web Services,test
+T1585.001,active,Social Media Accounts,test
+T1586.001,active,Social Media Accounts,"train,dev"
+T1586.002,active,Email Accounts,train
+T1587.001,active,Malware,"train,dev,test"
+T1587.004,active,Exploits,"train,test"
+T1588.001,active,Malware,"train,dev,test"
+T1588.002,active,Tool,"train,dev,test"
+T1588.004,active,Digital Certificates,train
+T1588.005,active,Exploits,"train,test"
+T1588.006,active,Vulnerabilities,"train,test"
+T1589,active,Gather Victim Identity Information,train
+T1590,active,Gather Victim Network Information,"train,dev"
+T1590.005,active,IP Addresses,"train,dev"
+T1592,active,Gather Victim Host Information,train
+T1592.001,active,Hardware,train
+T1592.004,active,Client Configurations,train
+T1593.001,active,Social Media,train
+T1593.002,active,Search Engines,train
+T1595,active,Active Scanning,train
+T1595.001,active,Scanning IP Blocks,train
+T1595.002,active,Vulnerability Scanning,train
+T1596.003,active,Digital Certificates,"train,dev"
+T1598,active,Phishing for Information,"train,test"
+T1598.001,active,Spearphishing Service,test
+T1598.002,active,Spearphishing Attachment,"train,test"
+T1598.003,active,Spearphishing Link,"dev,test"
+T1600,active,Weaken Encryption,train
+T1610,active,Deploy Container,test
+T1614,active,System Location Discovery,dev
+T1620,active,Reflective Code Loading,"train,dev,test"
+T1622,active,Debugger Evasion,"train,dev,test"
+T1647,active,Plist File Modification,train
