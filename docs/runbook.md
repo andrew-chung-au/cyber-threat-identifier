@@ -1,0 +1,507 @@
+# Runbook
+
+
+## Purpose
+
+
+This runbook explains how to reproduce the current Cyber Threat Identifier ingestion and embedding baseline from a clean checkout.
+
+It covers:
+
+- Environment setup
+- Local PostgreSQL with pgvector
+- ATT&CK data download and extraction
+- Database loading and embedding generation
+- Basic verification
+- External benchmark label-compatibility validation
+- Local development reset
+
+For corpus scope, provenance, schema, and committed-data policy, see [`dataset-notes.md`](dataset-notes.md).  
+For stable design decisions, see [`decisions.md`](decisions.md).  
+For benchmark design and evaluation results, see [`evaluation-notes.md`](evaluation-notes.md).
+
+
+---
+
+
+## Prerequisites
+
+
+Install:
+
+- The Python version specified in `pyproject.toml`
+- `uv`
+- Docker Desktop
+- Git
+
+Check local tools:
+
+```bash
+python --version
+uv --version
+docker --version
+docker compose version
+```
+
+Run all commands below from the repository root.
+
+
+---
+
+
+## Setup
+
+
+Clone the repository:
+
+```bash
+git clone <repository-url>
+cd cyber-threat-identifier
+```
+
+Create the environment and install locked dependencies:
+
+```bash
+uv sync
+```
+
+Create a local environment file:
+
+```bash
+cp .env.example .env
+```
+
+The default local database connection is:
+
+```dotenv
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cyber_threat_identifier
+```
+
+Do not commit `.env`.
+
+
+---
+
+
+## Start the database
+
+
+Start local PostgreSQL with pgvector:
+
+```bash
+docker compose up -d
+```
+
+Confirm that the database container is healthy:
+
+```bash
+docker compose ps
+```
+
+If `psql` is available locally, verify the connection:
+
+```bash
+psql "$DATABASE_URL" -c "SELECT 1;"
+```
+
+If `psql` is not installed locally, run the check inside the container:
+
+```bash
+docker compose exec postgres \
+  psql -U postgres -d cyber_threat_identifier -c "SELECT 1;"
+```
+
+
+---
+
+
+## Build the ATT&CK corpus
+
+
+Run each stage in order.
+
+
+### 1. Download ATT&CK data
+
+
+Download the default upstream reference:
+
+```bash
+uv run python -m src.ingestion.download_attack_data
+```
+
+For a fixed release baseline, use a pinned upstream tag or commit:
+
+```bash
+uv run python -m src.ingestion.download_attack_data --ref <release-tag-or-commit>
+```
+
+The downloader writes raw STIX files to:
+
+```text
+data/raw/attack/
+```
+
+It appends source provenance to:
+
+```text
+data/source_manifest.csv
+```
+
+
+### 2. Extract active techniques
+
+
+Extract active Enterprise ATT&CK techniques and sub-techniques:
+
+```bash
+uv run python -m src.ingestion.extract_attack_techniques
+```
+
+Expected output:
+
+```text
+data/processed/techniques.jsonl
+```
+
+
+### 3. Initialise the database
+
+
+Create the project tables and enable pgvector:
+
+```bash
+uv run python -m src.database.db_init
+```
+
+
+### 4. Load technique records
+
+
+Load processed technique records into PostgreSQL:
+
+```bash
+uv run python -m src.database.db_load_techniques
+```
+
+This stage loads canonical technique fields and prepares `embedding_text`. It does not generate embedding vectors.
+
+
+### 5. Build embeddings
+
+
+Generate vectors for loaded technique records:
+
+```bash
+uv run python -m src.database.db_build_embeddings
+```
+
+Create the optional HNSW index only for a later vector-retrieval performance experiment:
+
+```bash
+uv run python -m src.database.db_build_embeddings \
+  --create-hnsw-index
+```
+
+
+---
+
+
+## Verify the build
+
+
+Check that processed records exist:
+
+```bash
+wc -l data/processed/techniques.jsonl
+```
+
+Check database tables:
+
+```bash
+psql "$DATABASE_URL" -c "\dt"
+```
+
+Check that the pgvector extension is enabled:
+
+```bash
+psql "$DATABASE_URL" -c "
+SELECT extname
+FROM pg_extension
+WHERE extname = 'vector';
+"
+```
+
+Check loaded and embedded record counts:
+
+```bash
+psql "$DATABASE_URL" -c "
+SELECT
+  COUNT(*) AS total_techniques,
+  COUNT(embedding) AS embedded_techniques,
+  COUNT(*) - COUNT(embedding) AS missing_embeddings
+FROM techniques;
+"
+```
+
+Check the most recent pipeline audit entries:
+
+```bash
+psql "$DATABASE_URL" -c "
+SELECT
+  stage,
+  status,
+  records_processed,
+  started_at,
+  completed_at
+FROM ingestion_runs
+ORDER BY id DESC
+LIMIT 10;
+"
+```
+
+A successful build has:
+
+- A non-empty `data/processed/techniques.jsonl`
+- `techniques` and `ingestion_runs` tables
+- The `vector` extension enabled
+- One loaded database row per processed technique record
+- No missing embedding vectors after the embedding stage completes
+
+
+---
+
+
+## External benchmark inspection
+
+
+This section is optional. It supports feasibility work for the external Expert benchmark candidate and does not form part of the ATT&CK ingestion pipeline.
+
+The external upstream dataset is intentionally stored locally under:
+
+```text
+data/external_inspection/mitre-ttp-mapping/
+```
+
+This directory should remain ignored by Git:
+
+```gitignore
+# Raw upstream downloads: regenerated by the ingestion pipeline
+data/raw/attack/*.json
+
+# External datasets downloaded only for feasibility inspection
+data/external_inspection/
+```
+
+
+### Clone the candidate dataset
+
+
+Create the inspection directory and clone the upstream repository:
+
+```bash
+mkdir -p data/external_inspection
+
+git clone https://github.com/tumeteor/mitre-ttp-mapping.git \
+  data/external_inspection/mitre-ttp-mapping
+```
+
+Record the exact downloaded upstream revision:
+
+```bash
+git -C data/external_inspection/mitre-ttp-mapping rev-parse HEAD
+```
+
+The Expert split files should be present at:
+
+```text
+data/external_inspection/mitre-ttp-mapping/datasets/expert/
+├── expert_train.tsv
+├── expert_dev.tsv
+└── expert_test.tsv
+```
+
+
+### Validate Expert labels
+
+
+Validate external Expert labels against the local active Enterprise ATT&CK corpus:
+
+```bash
+uv run python src/evaluation/validate_external_expert_labels.py
+```
+
+The script expects:
+
+```text
+data/external_inspection/mitre-ttp-mapping/datasets/expert/
+data/raw/attack/enterprise-attack.json
+```
+
+It writes a lightweight compatibility report to:
+
+```text
+data/evaluation_reports/expert_label_compatibility.csv
+```
+
+Inspect labels that are not active in the local ATT&CK corpus:
+
+```bash
+awk -F',' 'NR == 1 || $2 != "active"' \
+  data/evaluation_reports/expert_label_compatibility.csv
+```
+
+This report contains ATT&CK IDs, status, technique names, and split membership. It does not copy threat-report narrative text and may be retained as a project evaluation artefact.
+
+
+### Current compatibility result
+
+
+The initial validation result was:
+
+```text
+Unique Expert labels: 290
+Active: 281
+Deprecated: 3
+Revoked: 6
+Absent: 0
+```
+
+The held-out Expert test split contains four rows with one or more non-active labels. Any future curated benchmark must exclude such records without changing the original upstream TSV files.
+
+Do not use `expert_test.tsv` to tune retrieval configuration, embedding models, prompts, answer format, or curation thresholds. Use `expert_dev.tsv` for those choices and reserve the test split for final evaluation.
+
+
+---
+
+
+## Rebuild from scratch
+
+
+Use this only for early local development when it is safe to delete the local database.
+
+```bash
+docker compose down -v
+docker compose up -d
+
+uv run python -m src.database.db_init
+uv run python -m src.database.db_load_techniques
+uv run python -m src.database.db_build_embeddings
+```
+
+This rebuild uses the existing processed corpus.
+
+To also refresh the ATT&CK source corpus, run the download and extraction stages before rebuilding the database:
+
+```bash
+uv run python -m src.ingestion.download_attack_data --ref <release-tag-or-commit>
+uv run python -m src.ingestion.extract_attack_techniques
+
+uv run python -m src.database.db_init
+uv run python -m src.database.db_load_techniques
+uv run python -m src.database.db_build_embeddings
+```
+
+
+---
+
+
+## Common issues
+
+
+### `DATABASE_URL is not set`
+
+
+Create `.env` in the repository root:
+
+```bash
+cp .env.example .env
+```
+
+Then confirm it contains a valid `DATABASE_URL`.
+
+
+### Database connection refused
+
+
+Start PostgreSQL and check its status:
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+View database logs if the service is not healthy:
+
+```bash
+docker compose logs postgres
+```
+
+
+### Input file not found
+
+
+If `enterprise-attack.json` is missing, rerun the ATT&CK download stage:
+
+```bash
+uv run python -m src.ingestion.download_attack_data
+```
+
+If `techniques.jsonl` is missing, rerun extraction:
+
+```bash
+uv run python -m src.ingestion.extract_attack_techniques
+```
+
+If Expert TSV files are missing during external compatibility validation, clone the external inspection dataset:
+
+```bash
+git clone https://github.com/tumeteor/mitre-ttp-mapping.git \
+  data/external_inspection/mitre-ttp-mapping
+```
+
+
+### pgvector extension unavailable
+
+
+Confirm that the Compose PostgreSQL service is running, then recreate the local database:
+
+```bash
+docker compose down -v
+docker compose up -d
+
+uv run python -m src.database.db_init
+```
+
+
+### External label-validation output is empty
+
+
+Confirm that the validation script ran successfully:
+
+```bash
+uv run python src/evaluation/validate_external_expert_labels.py
+```
+
+Then confirm the report exists:
+
+```bash
+ls -lh data/evaluation_reports/expert_label_compatibility.csv
+```
+
+
+---
+
+
+## Current limits
+
+
+This runbook currently covers:
+
+- ATT&CK acquisition and extraction
+- Database initialisation and record loading
+- Embedding generation
+- Basic database verification
+- External Expert-label compatibility validation
+
+Text retrieval, vector retrieval, hybrid retrieval, benchmark curation, answer generation, Streamlit, monitoring, and final evaluation commands will be added after their corresponding modules are implemented and validated.

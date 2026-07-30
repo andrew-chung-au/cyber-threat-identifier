@@ -1,0 +1,3 @@
+downloaded_at_utc,source_name,domain,version,source_url,local_path,sha256,notes
+2026-07-30T03:24:53+00:00,MITRE ATT&CK STIX collection index,all,v19.1,https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v19.1/index.json,data/raw/attack/attack-stix-index.json,197438841f79a969e431c00f8e0f82d36c72eab8e4de879039b00f2210ff187b,Machine-readable index of ATT&CK STIX collections
+2026-07-30T03:24:53+00:00,MITRE ATT&CK Enterprise STIX 2.1,enterprise,v19.1,https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v19.1/enterprise-attack/enterprise-attack.json,data/raw/attack/enterprise-attack.json,bdf1ce86a4e604214c5076d37ae4dcb322678afc528df8492e6fdc1b554f5da3,Enterprise ATT&CK STIX 2.1 collection bundle
