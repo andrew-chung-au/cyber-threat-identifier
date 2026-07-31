@@ -64,8 +64,8 @@ Choose a simple repository layout that supports ingestion, database loading, ret
 ### What was done
 
 - Compared a flat `src/` directory with a grouped structure organised by pipeline responsibility.
-- Chose a grouped `src/` layout for ingestion, database operations, retrieval, evaluation, and monitoring.
-- Kept shared helpers, including database configuration and future LLM utilities, at the root of `src/`.
+- Chose a grouped `src/` layout for ingestion, database operations, retrieval, evaluation, generation, and monitoring.
+- Kept shared helpers, including database configuration and LLM utilities, at the root of `src/`.
 - Chose Python module execution from the repository root as the standard way to run pipeline stages.
 
 ### What was learned
@@ -80,7 +80,7 @@ Use a grouped, pipeline-oriented repository structure and run stages with `uv ru
 
 ### Problems or uncertainties
 
-- Streamlit and monitoring are intentionally deferred until a retrieval baseline is working.
+- Streamlit and monitoring are intentionally deferred until a retrieval and answer baseline is working.
 - A Makefile was considered useful but deferred until core commands have been validated.
 
 ### Next step
@@ -228,7 +228,7 @@ Create a reproducible PostgreSQL and pgvector pipeline that keeps source-record 
 - Defined canonical technique storage and pipeline-run audit records.
 - Selected PostgreSQL with pgvector for structured records and vector storage.
 - Selected `sentence-transformers/all-MiniLM-L6-v2` as the initial local embedding baseline.
-- Chose normalised embeddings and cosine-distance retrieval.
+- Chose normalised embeddings and exact cosine-distance retrieval.
 
 ### What was learned
 
@@ -243,7 +243,7 @@ Use separate schema, load, and embedding stages over PostgreSQL with pgvector.
 ### Problems or uncertainties
 
 - The Compose configuration, dependencies, and full pipeline still need validation from a clean local checkout.
-- Text retrieval, hybrid retrieval, and the evaluation benchmark are not implemented.
+- Text retrieval, hybrid retrieval, and the evaluation benchmark are not implemented at this stage.
 - The baseline embedding model requires measurement rather than assumption.
 
 ### Next step
@@ -376,7 +376,7 @@ Evaluation planning and external benchmark feasibility.
 
 ### Goal
 
-Determine whether a public dataset of authentic cyber-threat narratives with existing ATT&CK labels could support later end-to-end evaluation of the full RAG system.
+Determine whether a public dataset of authentic cyber-threat narratives with existing ATT&CK labels could support later end-to-end evaluation of the full system.
 
 ### What was done
 
@@ -441,12 +441,12 @@ Implement text, vector, and hybrid retrieval benchmarks over the current ATT&CK 
 - Ran all three retrieval benchmarks over `data/eval/expert_retrieval_cases.csv` (226 cases).
 - Recorded per-method metrics and saved CSV outputs in `data/evaluation_reports/expert_text_retrieval_results.csv`, `expert_vector_retrieval_results.csv`, and `expert_hybrid_retrieval_results.csv`.
 - Updated `docs/evaluation-notes.md` to describe the benchmark setup, metrics, and current retrieval findings.
-- Updated `README.md` to reflect that retrieval baselines and benchmarks are implemented, and to state that vector retrieval is the current default backend.
+- Updated `README.md` to reflect that retrieval baselines and benchmarks are implemented and to state that vector retrieval is the current default backend.
 
 ### What was learned
 
-- Text-only retrieval is a very weak lexical baseline on this corpus: Hit@K and MRR remain close to zero even after loosening score filtering.
-- Vector retrieval is much stronger than text and clearly improves Recall@K, Hit@K, and MRR across the 226-case Expert-derived benchmark.
+- Text-only retrieval is a very weak lexical baseline on this corpus: Hit@k and MRR remain close to zero even after loosening score filtering.
+- Vector retrieval is much stronger than text and clearly improves Recall@k, Hit@k, and MRR across the 226-case Expert-derived benchmark.
 - Hybrid retrieval using RRF is slightly stronger than vector-only on some ranking metrics (e.g. Recall@1, Recall@3, Hit@3, MRR), while Recall@5 and Recall@10 remain identical.
 - The hybrid uplift over vector is real but small at the current corpus size and query mix; the extra implementation and compute complexity does not yet justify making hybrid the default.
 - These results support treating vector retrieval as the default v1 backend, with text and hybrid retained as evaluated baselines and debugging tools.
@@ -469,13 +469,71 @@ Design and implement the candidate-answer generation path, then use the Expert d
 
 ---
 
+## 2026-07-31 — Retrieval and generation refactor validation
+
+### Stage
+
+Refactoring and pipeline validation.
+
+### Goal
+
+Refactor retrieval and evaluation code into clearer modules, introduce shared helpers and answer-generation support, and confirm that the end-to-end pipeline still reproduces the existing benchmarks.
+
+### What was done
+
+- Introduced dedicated modules under `src/retrieval/` for text, vector, and hybrid retrieval, with shared dataclasses for retrieved candidates.
+- Added a shared embedding-model helper to centralise loading of `sentence-transformers/all-MiniLM-L6-v2` and avoid redundant initialisation within a single process.
+- Added `src/evaluation/metrics.py` to centralise retrieval-metric computation for text, vector, and hybrid runs.
+- Implemented `src/generation/schemas.py`, `src/generation/prompts.py`, and `src/generation/answer_generator.py` to define the structured answer-output schema and prompt scaffolding.
+- Implemented `src/evaluation/run_expert_answer_generation.py` as a benchmark script that:
+  - runs vector retrieval over Expert-derived cases,
+  - calls the answer generator to select primary and alternative techniques,
+  - records uncertainty and review-required flags,
+  - and writes JSONL and CSV outputs to `data/evaluation_reports/`.
+- Added a lightweight LLM client wrapper in `src/llm_client.py` to handle model ID configuration and client construction.
+- Ran the full ingestion, database, embedding, retrieval, and answer-generation pipeline from a clean checkout:
+  - confirmed that text, vector, and hybrid retrieval benchmarks still reproduced the expected ordering of methods and similar metric ranges,
+  - confirmed that answer-generation outputs were grounded in retrieved ATT&CK IDs and respected the uncertainty framing.
+- Verified that existing documentation (README and runbook) still aligned with the refactored module layout and updated them where needed.
+
+### What was learned
+
+- Refactoring retrieval into separate modules, with shared metrics and embedding helpers, improved readability without changing behaviour at the benchmark level.
+- Centralising embedding-model loading reduced repeated logs and model-initialisation time within a single process.
+- The initial answer-generation path can reliably stay within the retrieved ATT&CK context and express uncertainty when expected labels are missing from the candidate set.
+- A small `--limit` run is sufficient to catch most integration errors after refactor; larger runs can be reserved for post-refactor validation when everything is stable.
+
+### Decision made
+
+Adopt the refactored retrieval and evaluation structure as the new baseline:
+
+- Keep text, vector, and hybrid retrieval in separate modules with shared schemas and metrics.
+- Use the shared embedding-model helper for all embedding-based evaluations.
+- Use the new answer-generation pipeline as the basis for future rubric-based human evaluation.
+
+### Problems or uncertainties
+
+- The answer-generation pipeline still relies on a single configured model; model-comparison experiments and alternative prompts are future work.
+- The current LLM configuration is local and subject to provider constraints; long-term deployment configuration remains unspecified.
+- Per-query retrieval diagnostics (e.g. detailed hybrid vs vector case analysis) are not yet automated and will require further tooling.
+
+### Next step
+
+- Extend the evaluation notes with:
+  - a description of the answer-generation benchmark configuration,
+  - example answer outputs and failure patterns,
+  - and a mapping between retrieval failures and answer failures.
+- Finalise the initial human-review rubric and apply it to a small set of Expert-derived cases to validate the answer-output contract.
+
+---
+
 ## Template for future entries
 
 ## YYYY-MM-DD — Short stage title
 
 ### Stage
 
-Ingestion / corpus design / database / retrieval / evaluation / interface / monitoring / documentation.
+Ingestion / corpus design / database / retrieval / generation / evaluation / interface / monitoring / documentation.
 
 ### Goal
 

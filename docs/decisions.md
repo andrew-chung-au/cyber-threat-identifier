@@ -8,23 +8,25 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 
 ## Decision index
 
-| ID | Decision | Status | Date |
-|---|---|---|---|
-| DEC-001 | Project scope | Accepted | 2026-07-27 |
-| DEC-002 | Core corpus selection | Accepted | 2026-07-27 |
-| DEC-003 | Product naming and ATT&CK references | Accepted | 2026-07-27 |
-| DEC-004 | Public repository and attribution | Accepted | 2026-07-30 |
-| DEC-005 | Repository structure | Accepted | 2026-07-29 |
-| DEC-006 | Execution convention | Accepted | 2026-07-29 |
-| DEC-007 | Source provenance and versioning | Accepted | 2026-07-29 |
-| DEC-008 | Retrieval unit and chunking | Accepted | 2026-07-29 |
-| DEC-009 | Processed corpus schema and snapshot policy | Accepted | 2026-07-30 |
-| DEC-010 | Database and embedding pipeline | Accepted | 2026-07-29 |
-| DEC-011 | Embedding baseline | Accepted baseline | 2026-07-30 |
-| DEC-012 | Vector index strategy | Accepted | 2026-07-30 |
-| DEC-013 | Documentation strategy | Accepted | 2026-07-30 |
-| DEC-014 | External evaluation benchmark strategy | Accepted | 2026-07-30 |
-| DEC-015 | Default retrieval method for v1 | Accepted | 2026-07-31 |
+| ID      | Decision                                         | Status            | Date       |
+|---------|--------------------------------------------------|-------------------|------------|
+| DEC-001 | Project scope                                    | Accepted          | 2026-07-27 |
+| DEC-002 | Core corpus selection                            | Accepted          | 2026-07-27 |
+| DEC-003 | Product naming and ATT&CK references             | Accepted          | 2026-07-27 |
+| DEC-004 | Public repository and attribution                | Accepted          | 2026-07-30 |
+| DEC-005 | Repository structure                             | Accepted          | 2026-07-29 |
+| DEC-006 | Execution convention                             | Accepted          | 2026-07-29 |
+| DEC-007 | Source provenance and versioning                 | Accepted          | 2026-07-29 |
+| DEC-008 | Retrieval unit and chunking                      | Accepted          | 2026-07-29 |
+| DEC-009 | Processed corpus schema and snapshot policy      | Accepted          | 2026-07-30 |
+| DEC-010 | Database and embedding pipeline                  | Accepted          | 2026-07-29 |
+| DEC-011 | Embedding baseline                               | Accepted baseline | 2026-07-30 |
+| DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
+| DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy           | Accepted          | 2026-07-30 |
+| DEC-015 | Default retrieval method for v1                  | Accepted          | 2026-07-31 |
+| DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
+| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
 
 ---
 
@@ -54,7 +56,7 @@ Version 1 will retrieve and present relevant technique records with source-groun
 ### Consequences
 
 - The scope is specific, commercially relevant, and easier to evaluate than a broad cyber assistant.
-- The project has a clear input-output relationship: incident narrative in, ranked technique evidence out.
+- The project has a clear input–output relationship: incident narrative in, ranked technique evidence out.
 - The narrower scope supports fewer use cases than a full planning or response system.
 - User-facing documentation must state that outputs are analyst-supporting suggestions rather than conclusive determinations.
 
@@ -186,7 +188,7 @@ Raw ATT&CK files are regenerated through the documented download stage and verif
 
 ### Context
 
-The project will contain distinct ingestion, database, retrieval, evaluation, interface, and monitoring responsibilities. The repository must remain simple while supporting that growth.
+The project will contain distinct ingestion, database, retrieval, evaluation, generation, interface, and monitoring responsibilities. The repository must remain simple while supporting that growth.
 
 ### Decision
 
@@ -202,6 +204,7 @@ src/
 ├── database/
 ├── retrieval/
 ├── evaluation/
+├── generation/
 └── monitoring/
 ```
 
@@ -279,7 +282,7 @@ The ATT&CK repository’s default reference can change over time, while evaluati
 
 Download source data from the official `mitre-attack/attack-stix-data` repository and record acquisition metadata.
 
-The downloader will record the source URL, download timestamp, repository reference, local path, SHA-256 checksum, and notes in `data/source_manifest.csv`.
+The downloader records the source URL, download timestamp, repository reference, local path, SHA-256 checksum, and notes in `data/source_manifest.csv`.
 
 The default source reference is `master`, while a `--ref` option supports a fixed release tag for reproducible baselines.
 
@@ -337,7 +340,7 @@ Each technique record produces:
 - The retrieval unit remains source-native and easy to explain.
 - Technique identity, tactics, platforms, description, and provenance remain together.
 - The initial corpus is compact enough that splitting descriptions adds complexity without a clear benefit.
-- Future long-form sources may require a separate chunked document layer.
+- Future long-form sources may require a separate chunked-document layer.
 
 ---
 
@@ -636,3 +639,103 @@ Retain **text retrieval** and **hybrid retrieval (vector + text, RRF)** as imple
 - Hybrid remains available for diagnostics and future promotion; it is not removed despite its current marginal advantage.
 - The documentation must explain that hybrid is slightly stronger on the measured retrieval metrics, but that vector is chosen as the default for v1 because the uplift is small and does not yet justify the added complexity.
 - Future retrieval work can focus on improving the lexical channel and fusion configuration; if those changes materially increase hybrid’s advantage, the default can be updated in a new decision record.
+
+---
+
+## DEC-016 — Retrieval-module refactor and shared helpers
+
+**Status:** Accepted  
+**Date:** 2026-07-31
+
+### Context
+
+The initial retrieval implementation evolved incrementally and combined multiple concerns (SQL, scoring, metrics, and fusion) inside a small number of files. As retrieval benchmarks and answer-generation support were added, it became harder to reason about and reuse retrieval logic across evaluation scripts.
+
+Repeated embedding-model initialisation in different scripts also added unnecessary overhead and noisy logging.
+
+### Decision
+
+Refactor retrieval and evaluation code into clearer modules with shared helpers:
+
+- Keep text, vector, and hybrid retrieval implementations under `src/retrieval/`:
+  - `text.py` — lexical retrieval over the `techniques` table.
+  - `vector.py` — dense retrieval using pgvector.
+  - `hybrid.py` — Reciprocal Rank Fusion over text and vector candidate lists.
+- Define shared dataclasses (or equivalent types) for retrieved candidates, so all retrieval methods return consistent structures.
+- Add a shared embedding-model helper (for example in `src/retrieval/embedding_model.py`) that:
+  - loads `sentence-transformers/all-MiniLM-L6-v2` (or another configured model),
+  - can be reused across multiple benchmark scripts within a process,
+  - and hides model-name details behind a small function interface.
+- Centralise retrieval metric computation in `src/evaluation/metrics.py`, used by:
+  - text, vector, and hybrid retrieval benchmark scripts,
+  - answer-generation evaluation where retrieval metrics are needed.
+
+### Alternatives considered
+
+- Keep all retrieval code in a single module.
+- Initialise the embedding model directly in each benchmark script.
+- Implement retrieval logic inline in each evaluation script without shared helpers.
+- Move immediately to a separate microservice for retrieval instead of refactoring modules.
+
+### Consequences
+
+- Retrieval logic is easier to understand and reuse across benchmarks and future components (such as an interface).
+- Embedding-model initialisation is centralised, reducing duplication and making it easier to change the default model later.
+- Benchmark scripts become thinner, focusing on orchestration and I/O rather than retrieval implementation details.
+- The new structure adds a small amount of upfront complexity but simplifies future changes to retrieval and metrics.
+
+---
+
+## DEC-017 — Answer-generation pipeline and output contract
+
+**Status:** Accepted baseline  
+**Date:** 2026-07-31
+
+### Context
+
+Retrieval benchmarks established that vector retrieval is a strong default candidate backend, with hybrid providing a marginal uplift for some metrics. To support the project’s goal of analyst-facing outputs, the system also needs a candidate-answer layer that:
+
+- is grounded in retrieved ATT&CK records,
+- clearly expresses uncertainty,
+- and produces structured outputs suitable for human review and scoring.
+
+At this stage, answer-generation design and evaluation are still evolving, so the initial pipeline must be treated as a baseline rather than a final contract.
+
+### Decision
+
+Introduce a structured answer-generation pipeline with a clear output contract:
+
+- Retrieval:
+  - Use vector retrieval (v1 default) to fetch top-k ATT&CK technique candidates for each incident narrative.
+  - Record the retrieved ATT&CK IDs and any metadata needed for grounding.
+- Generation:
+  - Use an LLM client (configured via environment) to generate a structured answer that includes:
+    - `primary_attack_id` — the main candidate technique ID selected from the retrieved list.
+    - `alternative_attack_ids` — a small set of additional candidate technique IDs from the retrieved list.
+    - `supporting_attack_ids` — IDs for which evidence is explicitly discussed.
+    - `answer_summary` — a concise, analyst-readable explanation of the candidates and their rationale.
+    - `retrieval_grounding_note` — a short explanation of how retrieved ATT&CK descriptions support the mapping.
+    - `uncertainty_note` — explicit mention of ambiguity, missing expected labels, or incomplete evidence.
+    - `review_required` — a boolean flag indicating whether a human should review the answer before using it.
+    - `prompt_version` and `llm_model` metadata.
+- Output:
+  - Store one record per evaluation case in:
+    - `data/evaluation_reports/expert_answer_generation_v1.jsonl`
+    - `data/evaluation_reports/expert_answer_generation_v1.csv`
+  - Use this structured output as the basis for human-review rubrics and failure analysis.
+
+Treat this pipeline and schema as an accepted baseline: it is suitable for early answer evaluation and rubric design, but model choice, prompt wording, and some field details may change as evaluation results accumulate.
+
+### Alternatives considered
+
+- Generate free-form narrative answers without a structured schema.
+- Embed ATT&CK IDs directly in natural language without separate fields.
+- Combine retrieval and generation into a single monolithic script.
+- Delay any answer-generation implementation until retrieval work and external benchmark curation are fully complete.
+
+### Consequences
+
+- The answer layer remains explicitly grounded in retrieved ATT&CK records and cannot introduce arbitrary new IDs outside the retrieved candidate set without being flagged.
+- The structured contract allows for systematic human review and scoring across dimensions such as candidate validity, retrieval grounding, narrative grounding, uncertainty handling, and analyst usefulness.
+- The pipeline enables separation of retrieval failures (missing or mis-ranked candidates) from generation failures (poor reasoning over available evidence).
+- Future work can iterate on prompts, model selection, and rubric design while preserving the same high-level output contract, or evolve the contract in new decision records when needed.

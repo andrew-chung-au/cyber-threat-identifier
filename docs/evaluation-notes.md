@@ -50,6 +50,8 @@ The current retrieval unit is a processed ATT&CK technique or sub-technique reco
 
 ### Candidate metrics
 
+Retrieval metrics are computed by a shared helper in `src/evaluation/metrics.py`. Metrics include:
+
 - **Recall@k** — proportion of expected technique IDs present anywhere in the top \(k\) retrieved records.
 - **Hit@k** — proportion of evaluation cases with at least one expected technique in the top \(k\) results.
 - **MRR** — reciprocal rank of the first expected technique, averaged across eligible cases.
@@ -172,7 +174,26 @@ Record a short reviewer rationale for every score of `0` or `1` so recurring fai
 
 Retrieval benchmarking is implemented and running.
 
-Answer-generation evaluation design is defined, but full answer-generation benchmarking and scored human-review runs are still pending.
+The answer-generation pipeline is implemented for Expert-derived cases and writes structured outputs to:
+
+```text
+data/evaluation_reports/expert_answer_generation_v1.jsonl
+data/evaluation_reports/expert_answer_generation_v1.csv
+```
+
+Each record includes (at minimum):
+
+- Evaluation case metadata (IDs, split, upstream row index).
+- `expected_attack_ids` and `retrieved_attack_ids`.
+- `primary_attack_id`, `alternative_attack_ids`, and `supporting_attack_ids`.
+- `answer_summary`, `retrieval_grounding_note`, and `uncertainty_note`.
+- `review_required`, `prompt_version`, `llm_model`, and token counts when available.
+
+Full answer-generation benchmarking with a scored human-review rubric remains pending. The current outputs are suitable for:
+
+- preliminary qualitative review of answer behaviour,
+- validating that answers stay within retrieved ATT&CK context,
+- and designing the final rubric and curation rules.
 
 ---
 
@@ -193,11 +214,11 @@ The source describes Expert examples as selected threat-report paragraphs annota
 
 ### Split policy
 
-| Upstream split | Purpose | Use rule |
-|---|---|---|
-| `expert_train.tsv` | Optional exploratory analysis only | Do not use for final evaluation |
-| `expert_dev.tsv` | Finalise curation rules, answer format, prompts, and rubric | May be used repeatedly during development |
-| `expert_test.tsv` | Held-out external evaluation | Do not use to tune retrieval, prompt, model, or curation thresholds |
+| Upstream split     | Purpose                                    | Use rule                                          |
+|--------------------|--------------------------------------------|---------------------------------------------------|
+| `expert_train.tsv` | Optional exploratory analysis only         | Do not use for final evaluation                   |
+| `expert_dev.tsv`   | Finalise curation rules, answer format, prompts, and rubric | May be used repeatedly during development |
+| `expert_test.tsv`  | Held-out external evaluation               | Do not use to tune retrieval, prompt, model, or curation thresholds |
 
 The test split contains 157 upstream records. It must remain held out until the retrieval configuration, answer contract, curation rules, and human-review rubric are frozen.
 
@@ -250,13 +271,13 @@ data/evaluation_reports/expert_label_compatibility.csv
 
 The initial compatibility check across all Expert train, development, and test splits found:
 
-| Status | Unique label count |
-|---|---:|
-| Active    | 281 |
-| Deprecated| 3   |
-| Revoked   | 6   |
-| Absent    | 0   |
-| Total     | 290 |
+| Status     | Unique label count |
+|-----------|--------------------:|
+| Active    |                 281 |
+| Deprecated|                   3 |
+| Revoked   |                   6 |
+| Absent    |                   0 |
+| Total     |                 290 |
 
 The initial compatibility check identified four held-out Expert test records containing one or more non-active expected labels:
 
@@ -377,7 +398,13 @@ Store one generated-answer record per evaluation case and generation configurati
     "temperature": 0
   },
   "retrieved_attack_ids": ["T1105", "T1041", "T1119"],
-  "answer": "<generated answer>",
+  "primary_attack_id": "T1105",
+  "alternative_attack_ids": ["T1041"],
+  "supporting_attack_ids": ["T1105", "T1041"],
+  "answer_summary": "<generated structured summary>",
+  "retrieval_grounding_note": "<how retrieved records support the mapping>",
+  "uncertainty_note": "<explicit uncertainty or ambiguity>",
+  "review_required": true,
   "human_scores": {
     "candidate_validity": 0,
     "retrieval_grounding": 0,
@@ -389,9 +416,9 @@ Store one generated-answer record per evaluation case and generation configurati
 }
 ```
 
-### Current retrieval artefacts
+### Current retrieval and answer artefacts
 
-The current implemented retrieval benchmark produces method-specific result files in:
+The current implemented benchmarks produce result files in:
 
 ```text
 data/evaluation_reports/
@@ -402,6 +429,11 @@ Current retrieval artefacts include:
 - `expert_text_retrieval_results.csv`
 - `expert_vector_retrieval_results.csv`
 - `expert_hybrid_retrieval_results.csv`
+
+Current answer-generation artefacts include:
+
+- `expert_answer_generation_v1.jsonl`
+- `expert_answer_generation_v1.csv`
 
 ---
 

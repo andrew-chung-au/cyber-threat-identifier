@@ -3,74 +3,24 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
-from sentence_transformers import SentenceTransformer
+from src.retrieval.embedding_model import get_embedding_model
 
 from src.database.db_connection import get_connection
+from src.evaluation.metrics import (
+    hit_at_k,
+    parse_expected_ids,
+    recall_at_k,
+    reciprocal_rank,
+)
+from src.retrieval.vector import embed_query, retrieve_top_k_vector
 
 
 DEFAULT_INPUT_PATH = Path("data/eval/expert_retrieval_cases.csv")
 DEFAULT_OUTPUT_PATH = Path("data/evaluation_reports/expert_vector_retrieval_results.csv")
 DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_TOP_K = 10
-
-
-def parse_expected_ids(value: str) -> list[str]:
-    if pd.isna(value) or not str(value).strip():
-        return []
-    return [item.strip() for item in str(value).split(";") if item.strip()]
-
-
-def reciprocal_rank(retrieved_ids: list[str], expected_ids: set[str]) -> float:
-    for rank, attack_id in enumerate(retrieved_ids, start=1):
-        if attack_id in expected_ids:
-            return 1.0 / rank
-    return 0.0
-
-
-def recall_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> float:
-    if not expected_ids:
-        return 0.0
-    top_k = set(retrieved_ids[:k])
-    hits = len(top_k.intersection(expected_ids))
-    return hits / len(expected_ids)
-
-
-def hit_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> int:
-    top_k = set(retrieved_ids[:k])
-    return int(bool(top_k.intersection(expected_ids)))
-
-
-def retrieve_top_k_vector(
-    connection: Any,
-    query_embedding: list[float],
-    top_k: int,
-) -> list[dict[str, Any]]:
-    sql = """
-        SELECT
-            attack_id,
-            name,
-            1 - (embedding <=> %s::vector) AS retrieval_score
-        FROM techniques
-        WHERE embedding IS NOT NULL
-        ORDER BY embedding <=> %s::vector
-        LIMIT %s
-    """
-
-    with connection.cursor() as cursor:
-        cursor.execute(sql, (query_embedding, query_embedding, top_k))
-        rows = cursor.fetchall()
-
-    return [
-        {
-            "attack_id": attack_id,
-            "name": name,
-            "retrieval_score": float(score),
-        }
-        for attack_id, name, score in rows
-    ]
 
 
 def main() -> None:
@@ -109,20 +59,20 @@ def main() -> None:
 
     print(f"[INFO] Loaded {len(df)} evaluation cases from {args.input}")
     print(f"[INFO] Loading embedding model: {args.model}")
-    model = SentenceTransformer(args.model)
+    model = get_embedding_model(args.model)
     print("[OK]   Embedding model ready")
 
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, object]] = []
 
     with get_connection(register_pgvector=True) as connection:
         for idx, row in enumerate(df.itertuples(index=False), start=1):
             expected_ids = parse_expected_ids(row.expected_attack_ids)
             expected_set = set(expected_ids)
 
-            query_embedding = model.encode(
-                row.text1,
-                normalize_embeddings=True,
-            ).tolist()
+            query_embedding = embed_query(
+                model=model,
+                query_text=row.text1,
+            )
 
             retrieved = retrieve_top_k_vector(
                 connection=connection,
@@ -130,8 +80,8 @@ def main() -> None:
                 top_k=args.top_k,
             )
 
-            retrieved_ids = [item["attack_id"] for item in retrieved]
-            retrieved_scores = [item["retrieval_score"] for item in retrieved]
+            retrieved_ids = [item.attack_id for item in retrieved]
+            retrieved_scores = [item.retrieval_score for item in retrieved]
 
             results.append(
                 {

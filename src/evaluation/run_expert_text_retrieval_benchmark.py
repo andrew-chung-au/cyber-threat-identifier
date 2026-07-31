@@ -3,84 +3,22 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
 from src.database.db_connection import get_connection
+from src.evaluation.metrics import (
+    hit_at_k,
+    parse_expected_ids,
+    recall_at_k,
+    reciprocal_rank,
+)
+from src.retrieval.text import retrieve_top_k_text
 
 
 DEFAULT_INPUT_PATH = Path("data/eval/expert_retrieval_cases.csv")
 DEFAULT_OUTPUT_PATH = Path("data/evaluation_reports/expert_text_retrieval_results.csv")
 DEFAULT_TOP_K = 10
-
-
-def parse_expected_ids(value: str) -> list[str]:
-    if pd.isna(value) or not str(value).strip():
-        return []
-    return [item.strip() for item in str(value).split(";") if item.strip()]
-
-
-def reciprocal_rank(retrieved_ids: list[str], expected_ids: set[str]) -> float:
-    for rank, attack_id in enumerate(retrieved_ids, start=1):
-        if attack_id in expected_ids:
-            return 1.0 / rank
-    return 0.0
-
-
-def recall_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> float:
-    if not expected_ids:
-        return 0.0
-    top_k = set(retrieved_ids[:k])
-    hits = len(top_k.intersection(expected_ids))
-    return hits / len(expected_ids)
-
-
-def hit_at_k(retrieved_ids: list[str], expected_ids: set[str], k: int) -> int:
-    top_k = set(retrieved_ids[:k])
-    return int(bool(top_k.intersection(expected_ids)))
-
-
-def retrieve_top_k_text(
-    connection: Any,
-    query_text: str,
-    top_k: int,
-) -> list[dict[str, Any]]:
-    sql = """
-        WITH ranked_matches AS (
-            SELECT
-                attack_id,
-                name,
-                ts_rank_cd(
-                    search_vector,
-                    websearch_to_tsquery('english', %s),
-                    1
-                ) AS retrieval_score
-            FROM techniques
-            WHERE search_vector @@ websearch_to_tsquery('english', %s)
-        )
-        SELECT
-            attack_id,
-            name,
-            retrieval_score
-        FROM ranked_matches
-        WHERE retrieval_score > 0
-        ORDER BY retrieval_score DESC, attack_id ASC
-        LIMIT %s
-    """
-
-    with connection.cursor() as cursor:
-        cursor.execute(sql, (query_text, query_text, top_k))
-        rows = cursor.fetchall()
-
-    return [
-        {
-            "attack_id": attack_id,
-            "name": name,
-            "retrieval_score": float(score),
-        }
-        for attack_id, name, score in rows
-    ]
 
 
 def main() -> None:
@@ -118,7 +56,7 @@ def main() -> None:
 
     print(f"[INFO] Loaded {len(df)} evaluation cases from {args.input}")
 
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, object]] = []
 
     with get_connection() as connection:
         for idx, row in enumerate(df.itertuples(index=False), start=1):
@@ -131,8 +69,8 @@ def main() -> None:
                 top_k=args.top_k,
             )
 
-            retrieved_ids = [item["attack_id"] for item in retrieved]
-            retrieved_scores = [item["retrieval_score"] for item in retrieved]
+            retrieved_ids = [item.attack_id for item in retrieved]
+            retrieved_scores = [item.retrieval_score for item in retrieved]
 
             results.append(
                 {

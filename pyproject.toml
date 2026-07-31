@@ -5,9 +5,11 @@ description = "Evidence-oriented retrieval of Enterprise MITRE ATT&CK techniques
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "openai>=1.99.9",
     "pandas>=3.0.5",
     "pgvector>=0.5.0",
     "psycopg[binary]>=3.3.4",
+    "pydantic>=2.11.7",
     "python-dotenv>=1.2.2",
     "sentence-transformers>=5.6.1",
 ]
