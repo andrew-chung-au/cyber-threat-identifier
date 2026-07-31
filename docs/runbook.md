@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, and benchmark-feasibility baseline from a clean checkout.
+This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, and answer-generation baselines from a clean checkout.
 
 It covers:
 
@@ -11,7 +11,8 @@ It covers:
 - ATT&CK data download and extraction
 - Database loading and embedding generation
 - Basic verification
-- Retrieval benchmark execution
+- Retrieval benchmark execution (text, vector, hybrid)
+- Answer-generation benchmark execution
 - External benchmark repository inspection
 - External Expert-label compatibility validation
 - Local development reset
@@ -71,7 +72,7 @@ The default local database connection is:
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cyber_threat_identifier
 ```
 
-Do not commit `.env`.
+Set any LLM-related configuration (for answer generation) in `.env` as needed (for example a model identifier and API key). Do not commit `.env`.
 
 ---
 
@@ -164,7 +165,7 @@ Load processed technique records into PostgreSQL:
 uv run python -m src.database.db_load_techniques
 ```
 
-This stage loads canonical technique fields and prepares `embedding_text`. It does not generate embedding vectors.
+This stage loads canonical technique fields and prepares retrieval text. It does not generate embedding vectors.
 
 ### 5. Build embeddings
 
@@ -174,7 +175,7 @@ Generate vectors for loaded technique records:
 uv run python -m src.database.db_build_embeddings
 ```
 
-Create the optional HNSW index only for a later vector-retrieval performance experiment:
+Optionally create an HNSW index for later vector-retrieval performance experiments:
 
 ```bash
 uv run python -m src.database.db_build_embeddings \
@@ -255,10 +256,10 @@ The current retrieval benchmark input file is:
 data/eval/expert_retrieval_cases.csv
 ```
 
-The current implemented retrieval benchmarks compare:
+The implemented retrieval benchmarks compare:
 
 - Text-only retrieval
-- Vector retrieval
+- Vector retrieval (default v1 backend)
 - Hybrid retrieval using Reciprocal Rank Fusion
 
 ### 1. Run text retrieval benchmark
@@ -299,19 +300,11 @@ Expected output file:
 data/evaluation_reports/expert_hybrid_retrieval_results.csv
 ```
 
-This command evaluates the current hybrid benchmark configuration over the same 226 evaluation cases.
+This command evaluates the current hybrid benchmark configuration over the same evaluation cases.
 
-### Current reference results
+### Reference results
 
-At the current baseline, the retrieval benchmarks report:
-
-| Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Text | 0.0088 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0111 |
-| Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
-| Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
-
-These reference values are useful for confirming that a local rerun is behaving as expected under the current code and corpus.
+Current reference retrieval results on the full Expert-derived evaluation set are recorded in `docs/evaluation-notes.md`. Use those values to confirm that a local rerun is behaving as expected under the current code and corpus.
 
 ### Inspect benchmark outputs
 
@@ -327,7 +320,69 @@ Preview the first few rows of one result file:
 head -n 5 data/evaluation_reports/expert_vector_retrieval_results.csv
 ```
 
-If needed, compare summary values manually from the output logs or recompute them from the CSV outputs in a separate analysis step.
+---
+
+## Run answer-generation benchmark
+
+This section runs the current answer-generation pipeline over Expert-derived cases using vector retrieval as the backend.
+
+### 1. Configure the model
+
+Ensure `.env` contains whatever configuration the LLM client needs (for example a model identifier and API key). The details depend on your chosen provider and are described in `docs/decisions.md` and `docs/evaluation-notes.md`.
+
+You can verify configuration by running:
+
+```bash
+uv run python - <<'PY'
+from src.llm_client import get_default_model, get_client
+
+print("MODEL_ID:", get_default_model())
+client = get_client()
+print("Client initialised:", type(client).__name__)
+PY
+```
+
+### 2. Run answer generation
+
+Run the answer-generation benchmark over the Expert-derived cases:
+
+```bash
+uv run python -m src.evaluation.run_expert_answer_generation
+```
+
+To limit the run during development:
+
+```bash
+uv run python -m src.evaluation.run_expert_answer_generation --limit 10 --top-k 5
+```
+
+Expected output files:
+
+```text
+data/evaluation_reports/expert_answer_generation_v1.jsonl
+data/evaluation_reports/expert_answer_generation_v1.csv
+```
+
+Each record includes:
+
+- Evaluation case metadata (IDs, split, index)
+- Expected ATT&CK IDs
+- Retrieved ATT&CK IDs
+- Primary and alternative candidate IDs
+- Supporting IDs and grounded summary
+- Uncertainty note and `review_required` flag
+- Prompt version and model metadata
+- Token counts (if available)
+
+### Inspect answer outputs
+
+Preview the first few records:
+
+```bash
+head -n 3 data/evaluation_reports/expert_answer_generation_v1.jsonl
+```
+
+Or inspect the CSV in a notebook or spreadsheet for human review.
 
 ---
 
@@ -335,7 +390,7 @@ If needed, compare summary values manually from the output logs or recompute the
 
 This section is optional. It supports feasibility work for the external Expert benchmark candidate and does not form part of the ATT&CK ingestion pipeline.
 
-The external upstream dataset is intentionally stored locally under:
+The external upstream dataset is stored locally under:
 
 ```text
 data/external_inspection/mitre-ttp-mapping/
@@ -382,7 +437,7 @@ data/external_inspection/mitre-ttp-mapping/datasets/expert/
 Validate external Expert labels against the local active Enterprise ATT&CK corpus:
 
 ```bash
-uv run python src/evaluation/validate_external_expert_labels.py
+uv run python -m src.evaluation.validate_external_expert_labels
 ```
 
 The script expects:
@@ -392,7 +447,7 @@ data/external_inspection/mitre-ttp-mapping/datasets/expert/
 data/raw/attack/enterprise-attack.json
 ```
 
-It writes a lightweight compatibility report to:
+It writes a compatibility report to:
 
 ```text
 data/evaluation_reports/expert_label_compatibility.csv
@@ -406,37 +461,6 @@ awk -F',' 'NR == 1 || $2 != "active"' \
 ```
 
 This report contains ATT&CK IDs, status, technique names, and split membership. It does not copy threat-report narrative text and may be retained as a project evaluation artefact.
-
-### Current compatibility result
-
-The initial validation result was:
-
-```text
-Unique Expert labels: 290
-Active: 281
-Deprecated: 3
-Revoked: 6
-Absent: 0
-```
-
-The held-out Expert test split contains 157 rows in total.
-
-Four held-out test rows contain one or more non-active labels:
-
-```text
-12
-17
-32
-130
-```
-
-This leaves 153 held-out test rows that are technically compatible with the current active local ATT&CK corpus before later curation for narrative quality, length, and label-count rules.
-
-Use `expert_dev.tsv` to define and freeze curation thresholds, retrieval settings, prompt configuration, and answer-evaluation rules.
-
-Do not use `expert_test.tsv` to tune retrieval configuration, embedding models, prompts, answer format, or curation thresholds. Reserve the test split for final held-out evaluation only.
-
-Do not edit the upstream TSV files. Exclude ineligible records during benchmark curation rather than modifying the source data.
 
 ---
 
@@ -477,7 +501,13 @@ uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
 To rerun external label compatibility after a corpus refresh:
 
 ```bash
-uv run python src/evaluation/validate_external_expert_labels.py
+uv run python -m src.evaluation.validate_external_expert_labels
+```
+
+To rerun answer generation after prompt or model changes:
+
+```bash
+uv run python -m src.evaluation.run_expert_answer_generation
 ```
 
 ---
@@ -549,9 +579,7 @@ uv run python -m src.database.db_init
 
 ### Embedding model download warning
 
-If you see a Hugging Face warning about unauthenticated requests during vector or hybrid benchmark runs, the benchmark can still complete successfully.
-
-To reduce rate-limit risk and improve download reliability, set a local `HF_TOKEN` before running embedding-based benchmarks.
+If you see a warning about unauthenticated requests while loading the embedding model, the benchmark can still complete successfully. To reduce rate-limit risk and improve download reliability, configure a local token for the embedding provider, or ensure the model is cached on disk.
 
 ### Retrieval benchmark output missing
 
@@ -563,19 +591,16 @@ ls -lh data/evaluation_reports/expert_vector_retrieval_results.csv
 ls -lh data/evaluation_reports/expert_hybrid_retrieval_results.csv
 ```
 
-### External label-validation output is empty
+### Answer-generation output missing
 
-Confirm that the validation script ran successfully:
-
-```bash
-uv run python src/evaluation/validate_external_expert_labels.py
-```
-
-Then confirm the report exists:
+Confirm that the answer-generation command completed successfully, then check:
 
 ```bash
-ls -lh data/evaluation_reports/expert_label_compatibility.csv
+ls -lh data/evaluation_reports/expert_answer_generation_v1.csv
+ls -lh data/evaluation_reports/expert_answer_generation_v1.jsonl
 ```
+
+If they are missing, check `.env` for model configuration and rerun with a small `--limit`.
 
 ### External benchmark results are being used too early
 
@@ -596,15 +621,15 @@ This runbook currently covers:
 - Embedding generation
 - Basic database verification
 - Retrieval benchmark execution
+- Answer-generation benchmark execution
 - External repository inspection
 - External Expert-label compatibility validation
 
 This runbook does not yet cover:
 
-- Answer-generation benchmark commands
 - Human-review workflow commands
 - Streamlit interface startup
 - Monitoring and observability
 - Final held-out end-to-end evaluation execution
 
-Those steps should be added only after their corresponding modules, rules, and outputs are implemented and validated.
+Those steps should be added once their corresponding modules, rules, and outputs are implemented and validated.

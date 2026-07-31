@@ -35,6 +35,8 @@ Analyst review
 
 The corpus supports analyst investigation and technique identification. It is not intended to establish attribution, determine incident severity, prescribe incident-response actions, or guarantee complete coverage of adversary behaviour.
 
+The corpus supports retrieval and answer-generation experiments, but answer-generation behaviour, prompts, and scoring are documented in `evaluation-notes.md` and `decisions.md`, not here.
+
 ### Retrieval unit
 
 The version 1 retrieval unit is:
@@ -96,14 +98,14 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 
 ### Deferred boundary items
 
-| Item | Potential future value | Reason deferred |
-|---|---|---|
-| Procedure examples | Connect techniques to observed adversary behaviour | Requires relationship traversal and a more complex retrieval design |
-| Groups and software | Add contextual enrichment | Not required for the initial technique-identification baseline |
-| Detection strategies and analytics | Support detection-oriented workflows | Outside the v1 incident-to-technique scope |
-| Data sources and data components | Support telemetry and observability questions | Better suited to a later detection-gap feature |
-| Public incident reports | Provide realistic narrative evidence | Require separate provenance, copyright, curation, and chunking decisions |
-| Advisory documents | Add defensive guidance | Require long-document extraction and chunking |
+| Item               | Potential future value                                      | Reason deferred                                                  |
+|--------------------|-------------------------------------------------------------|------------------------------------------------------------------|
+| Procedure examples | Connect techniques to observed adversary behaviour          | Requires relationship traversal and a more complex retrieval design |
+| Groups and software| Add contextual enrichment                                   | Not required for the initial technique-identification baseline   |
+| Detection strategies and analytics | Support detection-oriented workflows         | Outside the v1 incident-to-technique scope                       |
+| Data sources and data components | Support telemetry and observability questions | Better suited to a later detection-gap feature                   |
+| Public incident reports | Provide realistic narrative evidence                   | Require separate provenance, copyright, curation, and chunking decisions |
+| Advisory documents | Add defensive guidance                                      | Require long-document extraction and chunking                    |
 
 ---
 
@@ -111,34 +113,34 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 
 ### Core source
 
-| Field | Value |
-|---|---|
-| Source name | MITRE ATT&CK Enterprise STIX dataset |
-| Role | Core retrieval corpus source |
-| Format | STIX 2.1 JSON |
-| Source repository | `mitre-attack/attack-stix-data` |
-| Collection index | `https://raw.githubusercontent.com/mitre-attack/attack-stix-data/<ref>/index.json` |
-| Enterprise bundle | `https://raw.githubusercontent.com/mitre-attack/attack-stix-data/<ref>/enterprise-attack/enterprise-attack.json` |
-| Raw local directory | `data/raw/attack/` |
-| Processed output | `data/processed/techniques.jsonl` |
-| Retrieval role | Canonical source for technique and sub-technique retrieval records |
-| Version approach | Default reference for refreshes; fixed release tag or commit for formal evaluation |
+| Field               | Value                                                                 |
+|---------------------|-----------------------------------------------------------------------|
+| Source name         | MITRE ATT&CK Enterprise STIX dataset                                  |
+| Role                | Core retrieval corpus source                                          |
+| Format              | STIX 2.1 JSON                                                         |
+| Source repository   | `mitre-attack/attack-stix-data`                                       |
+| Collection index    | `https://raw.githubusercontent.com/mitre-attack/attack-stix-data/<ref>/index.json` |
+| Enterprise bundle   | `https://raw.githubusercontent.com/mitre-attack/attack-stix-data/<ref>/enterprise-attack/enterprise-attack.json` |
+| Raw local directory | `data/raw/attack/`                                                    |
+| Processed output    | `data/processed/techniques.jsonl`                                     |
+| Retrieval role      | Canonical source for technique and sub-technique retrieval records    |
+| Version approach    | Default reference for refreshes; fixed release tag or commit for formal evaluation |
 
 ### External evaluation candidate
 
-| Field | Value |
-|---|---|
-| Source name | Security-TTP-Mapping |
-| Repository | `https://github.com/tumeteor/mitre-ttp-mapping` |
-| Candidate configuration | Expert |
-| Role | Future external answer-evaluation benchmark candidate |
-| Format | Tab-separated values (`.tsv`) |
-| Text field | `text1` |
-| Label field | `labels` |
-| Label format | String representation of a Python-style list of ATT&CK IDs |
-| Local inspection directory | `data/external_inspection/mitre-ttp-mapping/` |
-| Upstream splits | `expert_train.tsv`, `expert_dev.tsv`, `expert_test.tsv` |
-| Upstream licence declaration | Repository README declares Creative Commons CC BY 4.0 |
+| Field                    | Value                                                                 |
+|--------------------------|-----------------------------------------------------------------------|
+| Source name              | Security-TTP-Mapping                                                  |
+| Repository               | `https://github.com/tumeteor/mitre-ttp-mapping`                       |
+| Candidate configuration  | Expert                                                                |
+| Role                     | Future external retrieval and answer-evaluation benchmark candidate; not a retrieval corpus source |
+| Format                   | Tab-separated values (`.tsv`)                                         |
+| Text field               | `text1`                                                               |
+| Label field              | `labels`                                                              |
+| Label format             | String representation of a Python-style list of ATT&CK IDs            |
+| Local inspection directory | `data/external_inspection/mitre-ttp-mapping/`                      |
+| Upstream splits          | `expert_train.tsv`, `expert_dev.tsv`, `expert_test.tsv`              |
+| Upstream licence declaration | Repository README declares Creative Commons CC BY 4.0            |
 | Public repository policy | Upstream download remains ignored until third-party report-text redistribution treatment is resolved |
 
 ### Source coverage
@@ -187,10 +189,10 @@ This creates an acquisition trail between the official source bundle and the der
 
 The downloader supports two source-reference modes:
 
-| Mode | Purpose | Appropriate use |
-|---|---|---|
+| Mode                     | Purpose                                   | Appropriate use                        |
+|--------------------------|-------------------------------------------|----------------------------------------|
 | Default repository reference | Refresh the corpus against the current upstream source state | Development and current-data inspection |
-| Fixed release tag or commit | Rebuild a stable corpus version | Retrieval experiments, reported metrics, and reproducible portfolio results |
+| Fixed release tag or commit | Rebuild a stable corpus version        | Retrieval experiments, reported metrics, and reproducible portfolio results |
 
 A reported evaluation result must identify:
 
@@ -282,7 +284,7 @@ Until then, a public evaluation artefact may include:
 - Human-review scores
 - Failure categories
 
-Avoid publishing copied threat-report paragraphs unless their reuse is confirmed.
+Internal answer-generation evaluation artefacts (for example, JSONL or CSV files containing narratives and generated answers) should also remain uncommitted until redistribution and provenance for any embedded external threat-report text is resolved. Only aggregate statistics, label-compatible selection metadata, and failure categories should be committed.
 
 ### Corpus refresh policy
 
@@ -303,11 +305,11 @@ Operational commands for this process are maintained in [`runbook.md`](runbook.m
 
 ### Input and output
 
-| Item | Location |
-|---|---|
-| Raw input bundle | `data/raw/attack/enterprise-attack.json` |
-| Extraction module | `src/ingestion/extract_attack_techniques.py` |
-| Processed corpus | `data/processed/techniques.jsonl` |
+| Item           | Location                                        |
+|----------------|-------------------------------------------------|
+| Raw input bundle | `data/raw/attack/enterprise-attack.json`     |
+| Extraction module | `src/ingestion/extract_attack_techniques.py`|
+| Processed corpus | `data/processed/techniques.jsonl`            |
 
 ### Object selection
 
@@ -337,10 +339,10 @@ If multiple valid objects resolve to the same ATT&CK ID, the extractor retains t
 
 The extractor preserves two description fields:
 
-| Field | Purpose |
-|---|---|
-| `description_raw` | Original source-preserved description for evidence display and inspection |
-| `description_clean` | Retrieval-oriented description with inline citation markers removed and whitespace normalised |
+| Field              | Purpose                                                    |
+|--------------------|------------------------------------------------------------|
+| `description_raw`  | Original source-preserved description for evidence display and inspection |
+| `description_clean`| Retrieval-oriented description with inline citation markers removed and whitespace normalised |
 
 The cleaner does not rewrite source meaning or generate new content.
 
@@ -368,20 +370,20 @@ The extractor:
 
 Each line in `data/processed/techniques.jsonl` is one JSON object.
 
-| Field | Type | Description |
-|---|---|---|
-| `stix_id` | string | STIX identifier for the ATT&CK object |
-| `attack_id` | string | ATT&CK technique or sub-technique ID |
-| `name` | string | Technique or sub-technique name |
-| `is_subtechnique` | boolean | Whether the record is a sub-technique |
-| `parent_attack_id` | string or null | Parent technique ID when available |
-| `tactics` | list | Associated ATT&CK tactics with display and short names |
-| `platforms` | list | Associated Enterprise platform names |
-| `description_raw` | string | Original ATT&CK description retained as evidence |
-| `description_clean` | string | Cleaned description used for retrieval preparation |
-| `source_url` | string | Canonical ATT&CK technique URL |
-| `created` | string or null | Source creation timestamp |
-| `modified` | string or null | Source modification timestamp |
+| Field             | Type    | Description                                             |
+|-------------------|---------|---------------------------------------------------------|
+| `stix_id`         | string  | STIX identifier for the ATT&CK object                  |
+| `attack_id`       | string  | ATT&CK technique or sub-technique ID                   |
+| `name`            | string  | Technique or sub-technique name                        |
+| `is_subtechnique` | boolean | Whether the record is a sub-technique                  |
+| `parent_attack_id`| string or null | Parent technique ID when available           |
+| `tactics`         | list    | Associated ATT&CK tactics with display and short names |
+| `platforms`       | list    | Associated Enterprise platform names                   |
+| `description_raw` | string  | Original ATT&CK description retained as evidence       |
+| `description_clean`| string | Cleaned description used for retrieval preparation     |
+| `source_url`      | string  | Canonical ATT&CK technique URL                         |
+| `created`         | string or null | Source creation timestamp                     |
+| `modified`        | string or null | Source modification timestamp                |
 
 ### Example record
 
@@ -419,15 +421,15 @@ Each line in `data/processed/techniques.jsonl` is one JSON object.
 
 The active Enterprise technique corpus had the following cleaned-description lengths during the initial size analysis:
 
-| Measure | Description words |
-|---|---:|
-| Minimum | Approximately 30 |
-| Median | Approximately 151 |
-| Average | Approximately 168 |
-| 90th percentile | Approximately 273 |
-| 95th percentile | Approximately 312 |
-| 99th percentile | Approximately 435 |
-| Maximum | Approximately 555 |
+| Measure          | Description words |
+|------------------|------------------:|
+| Minimum          | Approximately 30  |
+| Median           | Approximately 151 |
+| Average          | Approximately 168 |
+| 90th percentile  | Approximately 273 |
+| 95th percentile  | Approximately 312 |
+| 99th percentile  | Approximately 435 |
+| Maximum          | Approximately 555 |
 
 ### Current approach
 
@@ -469,6 +471,7 @@ Technique: <name>
 Tactics: <display tactic names>
 Platforms: <platform names>
 
+
 Description:
 <description_clean>
 ```
@@ -476,6 +479,8 @@ Description:
 This keeps technique identity and useful metadata associated with the source description used for semantic retrieval.
 
 Embeddings are generated after structured records are loaded. The current local baseline model and vector-index strategy are implementation decisions recorded in `DEC-011` and `DEC-012`.
+
+Answer-generation uses retrieved records from this database as context but does not alter the stored corpus; prompts, models, and answer schemas are described in `evaluation-notes.md` and `decisions.md`.
 
 Database setup, embedding commands, and verification checks are maintained in [`runbook.md`](runbook.md).
 
@@ -495,18 +500,18 @@ expert_test.tsv
 
 Each record contains:
 
-| Field | Type | Purpose |
-|---|---|---|
-| `text1` | string | Threat-report paragraph |
-| `labels` | string | Python-style list of ATT&CK technique or sub-technique IDs |
+| Field   | Type   | Purpose                    |
+|---------|--------|----------------------------|
+| `text1` | string | Threat-report paragraph    |
+| `labels`| string | Python-style list of ATT&CK technique or sub-technique IDs |
 
 ### Split policy
 
-| Split | Intended project use |
-|---|---|
-| `expert_train.tsv` | Optional exploratory analysis only |
-| `expert_dev.tsv` | Develop and freeze curation rules, retrieval settings, prompt format, and human scoring rubric |
-| `expert_test.tsv` | Held-out final external evaluation only |
+| Split              | Intended project use                                                |
+|--------------------|---------------------------------------------------------------------|
+| `expert_train.tsv` | Optional exploratory analysis only                                  |
+| `expert_dev.tsv`   | Develop and freeze curation rules, retrieval settings, prompt format, and human scoring rubric |
+| `expert_test.tsv`  | Held-out final external evaluation only                             |
 
 The held-out test split must not be used to tune retrieval configuration, embedding models, prompts, LLM settings, answer format, or curation thresholds.
 
@@ -534,13 +539,13 @@ data/evaluation_reports/expert_label_compatibility.csv
 
 Initial result across all Expert splits:
 
-| Status | Unique labels |
-|---|---:|
-| Active | 281 |
-| Deprecated | 3 |
-| Revoked | 6 |
-| Absent | 0 |
-| Total | 290 |
+| Status     | Unique labels |
+|-----------|---------------:|
+| Active    |            281 |
+| Deprecated|              3 |
+| Revoked   |              6 |
+| Absent    |              0 |
+| Total     |            290 |
 
 ### Held-out test compatibility
 
@@ -556,6 +561,8 @@ Four records contain one or more non-active expected labels in the current local
 ```
 
 Therefore, 153 source records remain technically compatible before later curation for narrative quality, text length, label count, and answer-evaluation suitability.
+
+Any future `reviewed_primary_attack_id` or similar field used for evaluation will be defined in a separate curated-benchmark artefact or evaluation record and will not modify the original external label list or the ATT&CK corpus.
 
 ---
 
@@ -619,6 +626,7 @@ Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md
 - The external Expert dataset is multi-label, and its label lists do not identify a verified single primary technique.
 - The external dataset's README declares CC BY 4.0, but it does not itemise the provenance or original redistribution terms for each underlying threat-report paragraph.
 - The external benchmark remains a candidate until development-split curation rules, answer format, and evaluation rubric are frozen.
+- Answer-generation behaviour is still evolving; the current pipeline and output schema are treated as a baseline and may change as evaluation findings accumulate.
 
 ---
 
