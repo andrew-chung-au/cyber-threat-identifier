@@ -1,6 +1,5 @@
 # Dataset notes
 
-
 This document records the scope, provenance, structure, processing rules, data artefacts, quality checks, and limitations of the Cyber Threat Identifier corpus and external evaluation-data candidates.
 
 It is the working reference for corpus design and source management.
@@ -10,23 +9,17 @@ For chronological implementation history, see [`project-log.md`](project-log.md)
 For reproducible setup and pipeline commands, see [`runbook.md`](runbook.md).  
 For retrieval experiments, benchmark design, and metrics, see [`evaluation-notes.md`](evaluation-notes.md).
 
-
 ---
-
 
 ## Corpus summary
 
-
 ### Initial corpus
-
 
 Version 1 uses active Enterprise MITRE ATT&CK technique and sub-technique records extracted from the official ATT&CK STIX 2.1 Enterprise bundle.
 
 The initial corpus contains one retrieval record for each retained technique or sub-technique.
 
-
 ### Intended use
-
 
 The corpus supports an incident-to-technique retrieval task:
 
@@ -42,9 +35,7 @@ Analyst review
 
 The corpus supports analyst investigation and technique identification. It is not intended to establish attribution, determine incident severity, prescribe incident-response actions, or guarantee complete coverage of adversary behaviour.
 
-
 ### Retrieval unit
-
 
 The version 1 retrieval unit is:
 
@@ -66,15 +57,11 @@ Document-style chunking is not used for the initial technique corpus.
 
 The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-index strategy, including optional HNSW use, is recorded in `DEC-012`.
 
-
 ---
-
 
 ## Corpus boundaries
 
-
 ### Included in version 1
-
 
 - Enterprise ATT&CK STIX 2.1 `attack-pattern` objects
 - Active techniques
@@ -88,9 +75,7 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 - Cleaned descriptions for retrieval preparation
 - Raw descriptions for evidence display and inspection
 
-
 ### Excluded in version 1
-
 
 - Revoked ATT&CK objects
 - Deprecated ATT&CK objects
@@ -109,9 +94,7 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 - Vendor threat-intelligence reports as retrieval corpus sources
 - Long-form advisory documents as retrieval corpus sources
 
-
 ### Deferred boundary items
-
 
 | Item | Potential future value | Reason deferred |
 |---|---|---|
@@ -122,15 +105,11 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 | Public incident reports | Provide realistic narrative evidence | Require separate provenance, copyright, curation, and chunking decisions |
 | Advisory documents | Add defensive guidance | Require long-document extraction and chunking |
 
-
 ---
-
 
 ## Source inventory
 
-
 ### Core source
-
 
 | Field | Value |
 |---|---|
@@ -145,9 +124,7 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 | Retrieval role | Canonical source for technique and sub-technique retrieval records |
 | Version approach | Default reference for refreshes; fixed release tag or commit for formal evaluation |
 
-
 ### External evaluation candidate
-
 
 | Field | Value |
 |---|---|
@@ -164,9 +141,7 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 | Upstream licence declaration | Repository README declares Creative Commons CC BY 4.0 |
 | Public repository policy | Upstream download remains ignored until third-party report-text redistribution treatment is resolved |
 
-
 ### Source coverage
-
 
 The Enterprise STIX bundle contains multiple object types. Version 1 retains only active `attack-pattern` objects representing techniques and sub-techniques.
 
@@ -183,15 +158,11 @@ The source provides the initial fields needed for evidence-oriented retrieval:
 - Source modification timestamp
 - Revoked and deprecated status fields
 
-
 ---
-
 
 ## Provenance and versioning
 
-
 ### ATT&CK download provenance
-
 
 Each ATT&CK source download is recorded in:
 
@@ -212,9 +183,7 @@ The manifest records:
 
 This creates an acquisition trail between the official source bundle and the derived processed corpus.
 
-
 ### Source references
-
 
 The downloader supports two source-reference modes:
 
@@ -232,9 +201,7 @@ A reported evaluation result must identify:
 - Retrieval configuration
 - Benchmark version or upstream dataset revision
 
-
 ### External dataset provenance
-
 
 The external Expert dataset is inspected from a local Git clone. Record the exact upstream revision before using it in development or final evaluation:
 
@@ -253,9 +220,7 @@ Any future curated benchmark metadata must preserve:
 - Local pinned ATT&CK release
 - Inclusion or exclusion reason
 
-
 ### Authoritative source
-
 
 The official Enterprise ATT&CK STIX bundle is the authoritative source for the retrieval corpus.
 
@@ -263,18 +228,13 @@ The official Enterprise ATT&CK STIX bundle is the authoritative source for the r
 
 The Security-TTP-Mapping Expert subset is an external evaluation-data candidate, not a retrieval corpus source.
 
-
 ---
-
 
 ## Repository artefacts
 
-
 The project uses a hybrid artefact policy: important derived data is committed for inspection, while reproducible upstream downloads remain local.
 
-
 ### Committed artefacts
-
 
 The following artefacts should be version controlled:
 
@@ -290,9 +250,7 @@ Reasons:
 - `source_manifest.csv` preserves ATT&CK source provenance and checksums.
 - `expert_label_compatibility.csv` documents compatibility between the candidate external dataset labels and the active local ATT&CK corpus without reproducing threat-report text.
 
-
 ### Ignored artefacts
-
 
 The following upstream files should not be committed:
 
@@ -308,9 +266,7 @@ Raw ATT&CK files are regenerated by the downloader from the recorded source refe
 
 The repository should also exclude local runtime state, including `.env`, virtual environments, Python caches, and Docker database volumes.
 
-
 ### Future benchmark artefacts
-
 
 Do not commit a final external benchmark containing copied `text1` narratives until the redistribution and provenance position is explicitly resolved.
 
@@ -328,9 +284,7 @@ Until then, a public evaluation artefact may include:
 
 Avoid publishing copied threat-report paragraphs unless their reuse is confirmed.
 
-
 ### Corpus refresh policy
-
 
 When intentionally refreshing the ATT&CK corpus:
 
@@ -343,15 +297,11 @@ When intentionally refreshing the ATT&CK corpus:
 
 Operational commands for this process are maintained in [`runbook.md`](runbook.md).
 
-
 ---
-
 
 ## Extraction rules
 
-
 ### Input and output
-
 
 | Item | Location |
 |---|---|
@@ -359,9 +309,7 @@ Operational commands for this process are maintained in [`runbook.md`](runbook.m
 | Extraction module | `src/ingestion/extract_attack_techniques.py` |
 | Processed corpus | `data/processed/techniques.jsonl` |
 
-
 ### Object selection
-
 
 The extractor retains a record only when all of the following are true:
 
@@ -374,7 +322,6 @@ The extractor retains a record only when all of the following are true:
 - The object has a MITRE ATT&CK external reference
 - The external ATT&CK ID matches an expected technique or sub-technique format
 
-
 Expected ATT&CK ID patterns:
 
 ```text
@@ -382,15 +329,11 @@ Technique:     T####
 Sub-technique: T####.###
 ```
 
-
 ### Duplicate handling
-
 
 If multiple valid objects resolve to the same ATT&CK ID, the extractor retains the record with the newest `modified` timestamp.
 
-
 ### Description handling
-
 
 The extractor preserves two description fields:
 
@@ -401,9 +344,7 @@ The extractor preserves two description fields:
 
 The cleaner does not rewrite source meaning or generate new content.
 
-
 ### Tactic handling
-
 
 The extractor:
 
@@ -412,9 +353,7 @@ The extractor:
 - Creates readable display names
 - Removes duplicate tactics within a record
 
-
 ### Platform handling
-
 
 The extractor:
 
@@ -423,12 +362,9 @@ The extractor:
 - Removes duplicates
 - Sorts platform values for consistency
 
-
 ---
 
-
 ## Processed record schema
-
 
 Each line in `data/processed/techniques.jsonl` is one JSON object.
 
@@ -447,9 +383,7 @@ Each line in `data/processed/techniques.jsonl` is one JSON object.
 | `created` | string or null | Source creation timestamp |
 | `modified` | string or null | Source modification timestamp |
 
-
 ### Example record
-
 
 ```json
 {
@@ -477,15 +411,11 @@ Each line in `data/processed/techniques.jsonl` is one JSON object.
 }
 ```
 
-
 ---
-
 
 ## Size and chunking
 
-
 ### Initial size analysis
-
 
 The active Enterprise technique corpus had the following cleaned-description lengths during the initial size analysis:
 
@@ -499,17 +429,13 @@ The active Enterprise technique corpus had the following cleaned-description len
 | 99th percentile | Approximately 435 |
 | Maximum | Approximately 555 |
 
-
 ### Current approach
-
 
 The corpus is not chunked.
 
 Technique and sub-technique records are already compact, source-native units. Keeping each record intact preserves the connection between technique identity, tactic and platform metadata, source description, and provenance.
 
-
 ### Future trigger
-
 
 Introduce a separate document-chunking process only if the corpus expands to long-form materials, such as:
 
@@ -527,12 +453,9 @@ techniques       # Canonical ATT&CK technique records
 document_chunks  # Passages from long supporting documents
 ```
 
-
 ---
 
-
 ## Database representation
-
 
 The processed corpus is loaded into the PostgreSQL `techniques` table.
 
@@ -556,15 +479,11 @@ Embeddings are generated after structured records are loaded. The current local 
 
 Database setup, embedding commands, and verification checks are maintained in [`runbook.md`](runbook.md).
 
-
 ---
-
 
 ## External benchmark checks
 
-
 ### Dataset structure
-
 
 The Expert external dataset contains three pre-split TSV files:
 
@@ -581,9 +500,7 @@ Each record contains:
 | `text1` | string | Threat-report paragraph |
 | `labels` | string | Python-style list of ATT&CK technique or sub-technique IDs |
 
-
 ### Split policy
-
 
 | Split | Intended project use |
 |---|---|
@@ -593,17 +510,13 @@ Each record contains:
 
 The held-out test split must not be used to tune retrieval configuration, embedding models, prompts, LLM settings, answer format, or curation thresholds.
 
-
 ### Label compatibility rule
-
 
 A future external benchmark record is eligible only if every upstream expected ATT&CK ID is active in the project's pinned local Enterprise ATT&CK corpus.
 
 Records with one or more `deprecated`, `revoked`, or `absent` expected IDs are excluded from the curated benchmark. The original upstream files are never edited.
 
-
 ### Compatibility validation
-
 
 The validation module is:
 
@@ -629,9 +542,7 @@ Initial result across all Expert splits:
 | Absent | 0 |
 | Total | 290 |
 
-
 ### Held-out test compatibility
-
 
 The upstream Expert test split contains 157 records.
 
@@ -646,15 +557,11 @@ Four records contain one or more non-active expected labels in the current local
 
 Therefore, 153 source records remain technically compatible before later curation for narrative quality, text length, label count, and answer-evaluation suitability.
 
-
 ---
-
 
 ## Data-quality checks
 
-
 ### Current ATT&CK corpus checks
-
 
 The pipeline currently checks:
 
@@ -669,9 +576,7 @@ The pipeline currently checks:
 - Duplicate processed `attack_id` values before database loading
 - SHA-256 fingerprinting of processed JSONL input
 
-
 ### Current external benchmark checks
-
 
 The external dataset feasibility process currently checks:
 
@@ -684,9 +589,7 @@ The external dataset feasibility process currently checks:
 - Compatibility of all expected labels with the active local Enterprise ATT&CK corpus
 - Test-record eligibility where every expected label is active
 
-
 ### Planned checks
-
 
 - Automated corpus-profile report with counts and missing-value checks
 - Sampled manual review of extracted ATT&CK records
@@ -702,12 +605,9 @@ The external dataset feasibility process currently checks:
 
 Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md`](evaluation-notes.md).
 
-
 ---
 
-
 ## Known limitations
-
 
 - The retrieval corpus contains ATT&CK techniques and sub-techniques only; it does not contain observed real-world incident narratives.
 - The corpus excludes procedure examples, relationships, software, groups, campaigns, mitigations, detections, data sources, and data components.
@@ -720,12 +620,9 @@ Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md
 - The external dataset's README declares CC BY 4.0, but it does not itemise the provenance or original redistribution terms for each underlying threat-report paragraph.
 - The external benchmark remains a candidate until development-split curation rules, answer format, and evaluation rubric are frozen.
 
-
 ---
 
-
 ## Source attribution
-
 
 Cyber Threat Identifier uses MITRE ATT&CK content under MITRE's terms of use.
 
@@ -743,12 +640,9 @@ See:
 - [MITRE ATT&CK Legal and Branding Guidance](https://attack.mitre.org/resources/legal-and-branding/)
 - [Security-TTP-Mapping repository](https://github.com/tumeteor/mitre-ttp-mapping)
 
-
 ---
 
-
 ## Open dataset questions
-
 
 - Which ATT&CK release tag or commit should become the first fixed formal evaluation baseline?
 - Should `parent_attack_id` be populated in the next extraction iteration?

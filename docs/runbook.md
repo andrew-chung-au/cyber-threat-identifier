@@ -1,10 +1,8 @@
 # Runbook
 
-
 ## Purpose
 
-
-This runbook explains how to reproduce the current Cyber Threat Identifier ingestion and embedding baseline from a clean checkout.
+This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, and benchmark-feasibility baseline from a clean checkout.
 
 It covers:
 
@@ -13,19 +11,18 @@ It covers:
 - ATT&CK data download and extraction
 - Database loading and embedding generation
 - Basic verification
-- External benchmark label-compatibility validation
+- Retrieval benchmark execution
+- External benchmark repository inspection
+- External Expert-label compatibility validation
 - Local development reset
 
 For corpus scope, provenance, schema, and committed-data policy, see [`dataset-notes.md`](dataset-notes.md).  
 For stable design decisions, see [`decisions.md`](decisions.md).  
-For benchmark design and evaluation results, see [`evaluation-notes.md`](evaluation-notes.md).
-
+For benchmark design, evaluation rules, and results, see [`evaluation-notes.md`](evaluation-notes.md).
 
 ---
 
-
 ## Prerequisites
-
 
 Install:
 
@@ -45,12 +42,9 @@ docker compose version
 
 Run all commands below from the repository root.
 
-
 ---
 
-
 ## Setup
-
 
 Clone the repository:
 
@@ -79,12 +73,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cyber_threat_identifi
 
 Do not commit `.env`.
 
-
 ---
 
-
 ## Start the database
-
 
 Start local PostgreSQL with pgvector:
 
@@ -111,18 +102,13 @@ docker compose exec postgres \
   psql -U postgres -d cyber_threat_identifier -c "SELECT 1;"
 ```
 
-
 ---
-
 
 ## Build the ATT&CK corpus
 
-
 Run each stage in order.
 
-
 ### 1. Download ATT&CK data
-
 
 Download the default upstream reference:
 
@@ -148,9 +134,7 @@ It appends source provenance to:
 data/source_manifest.csv
 ```
 
-
 ### 2. Extract active techniques
-
 
 Extract active Enterprise ATT&CK techniques and sub-techniques:
 
@@ -164,9 +148,7 @@ Expected output:
 data/processed/techniques.jsonl
 ```
 
-
 ### 3. Initialise the database
-
 
 Create the project tables and enable pgvector:
 
@@ -174,9 +156,7 @@ Create the project tables and enable pgvector:
 uv run python -m src.database.db_init
 ```
 
-
 ### 4. Load technique records
-
 
 Load processed technique records into PostgreSQL:
 
@@ -186,9 +166,7 @@ uv run python -m src.database.db_load_techniques
 
 This stage loads canonical technique fields and prepares `embedding_text`. It does not generate embedding vectors.
 
-
 ### 5. Build embeddings
-
 
 Generate vectors for loaded technique records:
 
@@ -203,12 +181,9 @@ uv run python -m src.database.db_build_embeddings \
   --create-hnsw-index
 ```
 
-
 ---
 
-
 ## Verify the build
-
 
 Check that processed records exist:
 
@@ -268,12 +243,95 @@ A successful build has:
 - One loaded database row per processed technique record
 - No missing embedding vectors after the embedding stage completes
 
+---
+
+## Run retrieval benchmarks
+
+This section reproduces the current retrieval baselines over the Expert-derived evaluation cases.
+
+The current retrieval benchmark input file is:
+
+```text
+data/eval/expert_retrieval_cases.csv
+```
+
+The current implemented retrieval benchmarks compare:
+
+- Text-only retrieval
+- Vector retrieval
+- Hybrid retrieval using Reciprocal Rank Fusion
+
+### 1. Run text retrieval benchmark
+
+```bash
+uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
+```
+
+Expected output file:
+
+```text
+data/evaluation_reports/expert_text_retrieval_results.csv
+```
+
+### 2. Run vector retrieval benchmark
+
+```bash
+uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark
+```
+
+Expected output file:
+
+```text
+data/evaluation_reports/expert_vector_retrieval_results.csv
+```
+
+This command loads the current embedding model and evaluates dense retrieval over the local ATT&CK corpus.
+
+### 3. Run hybrid retrieval benchmark
+
+```bash
+uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+```
+
+Expected output file:
+
+```text
+data/evaluation_reports/expert_hybrid_retrieval_results.csv
+```
+
+This command evaluates the current hybrid benchmark configuration over the same 226 evaluation cases.
+
+### Current reference results
+
+At the current baseline, the retrieval benchmarks report:
+
+| Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Text | 0.0088 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0111 |
+| Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
+| Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
+
+These reference values are useful for confirming that a local rerun is behaving as expected under the current code and corpus.
+
+### Inspect benchmark outputs
+
+Check that the three result files were written:
+
+```bash
+ls -lh data/evaluation_reports/expert_*_retrieval_results.csv
+```
+
+Preview the first few rows of one result file:
+
+```bash
+head -n 5 data/evaluation_reports/expert_vector_retrieval_results.csv
+```
+
+If needed, compare summary values manually from the output logs or recompute them from the CSV outputs in a separate analysis step.
 
 ---
 
-
 ## External benchmark inspection
-
 
 This section is optional. It supports feasibility work for the external Expert benchmark candidate and does not form part of the ATT&CK ingestion pipeline.
 
@@ -293,9 +351,7 @@ data/raw/attack/*.json
 data/external_inspection/
 ```
 
-
 ### Clone the candidate dataset
-
 
 Create the inspection directory and clone the upstream repository:
 
@@ -321,9 +377,7 @@ data/external_inspection/mitre-ttp-mapping/datasets/expert/
 └── expert_test.tsv
 ```
 
-
 ### Validate Expert labels
-
 
 Validate external Expert labels against the local active Enterprise ATT&CK corpus:
 
@@ -353,9 +407,7 @@ awk -F',' 'NR == 1 || $2 != "active"' \
 
 This report contains ATT&CK IDs, status, technique names, and split membership. It does not copy threat-report narrative text and may be retained as a project evaluation artefact.
 
-
 ### Current compatibility result
-
 
 The initial validation result was:
 
@@ -367,16 +419,28 @@ Revoked: 6
 Absent: 0
 ```
 
-The held-out Expert test split contains four rows with one or more non-active labels. Any future curated benchmark must exclude such records without changing the original upstream TSV files.
+The held-out Expert test split contains 157 rows in total.
 
-Do not use `expert_test.tsv` to tune retrieval configuration, embedding models, prompts, answer format, or curation thresholds. Use `expert_dev.tsv` for those choices and reserve the test split for final evaluation.
+Four held-out test rows contain one or more non-active labels:
 
+```text
+12
+17
+32
+130
+```
+
+This leaves 153 held-out test rows that are technically compatible with the current active local ATT&CK corpus before later curation for narrative quality, length, and label-count rules.
+
+Use `expert_dev.tsv` to define and freeze curation thresholds, retrieval settings, prompt configuration, and answer-evaluation rules.
+
+Do not use `expert_test.tsv` to tune retrieval configuration, embedding models, prompts, answer format, or curation thresholds. Reserve the test split for final held-out evaluation only.
+
+Do not edit the upstream TSV files. Exclude ineligible records during benchmark curation rather than modifying the source data.
 
 ---
 
-
 ## Rebuild from scratch
-
 
 Use this only for early local development when it is safe to delete the local database.
 
@@ -402,15 +466,25 @@ uv run python -m src.database.db_load_techniques
 uv run python -m src.database.db_build_embeddings
 ```
 
+To rerun retrieval benchmarks after a corpus or retrieval-code change:
+
+```bash
+uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
+uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark
+uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+```
+
+To rerun external label compatibility after a corpus refresh:
+
+```bash
+uv run python src/evaluation/validate_external_expert_labels.py
+```
 
 ---
 
-
 ## Common issues
 
-
 ### `DATABASE_URL is not set`
-
 
 Create `.env` in the repository root:
 
@@ -420,9 +494,7 @@ cp .env.example .env
 
 Then confirm it contains a valid `DATABASE_URL`.
 
-
 ### Database connection refused
-
 
 Start PostgreSQL and check its status:
 
@@ -437,9 +509,7 @@ View database logs if the service is not healthy:
 docker compose logs postgres
 ```
 
-
 ### Input file not found
-
 
 If `enterprise-attack.json` is missing, rerun the ATT&CK download stage:
 
@@ -453,6 +523,12 @@ If `techniques.jsonl` is missing, rerun extraction:
 uv run python -m src.ingestion.extract_attack_techniques
 ```
 
+If retrieval benchmark input cases are missing, confirm this file exists:
+
+```bash
+ls -lh data/eval/expert_retrieval_cases.csv
+```
+
 If Expert TSV files are missing during external compatibility validation, clone the external inspection dataset:
 
 ```bash
@@ -460,9 +536,7 @@ git clone https://github.com/tumeteor/mitre-ttp-mapping.git \
   data/external_inspection/mitre-ttp-mapping
 ```
 
-
 ### pgvector extension unavailable
-
 
 Confirm that the Compose PostgreSQL service is running, then recreate the local database:
 
@@ -473,9 +547,23 @@ docker compose up -d
 uv run python -m src.database.db_init
 ```
 
+### Embedding model download warning
+
+If you see a Hugging Face warning about unauthenticated requests during vector or hybrid benchmark runs, the benchmark can still complete successfully.
+
+To reduce rate-limit risk and improve download reliability, set a local `HF_TOKEN` before running embedding-based benchmarks.
+
+### Retrieval benchmark output missing
+
+Confirm that the benchmark command completed successfully, then check the output path:
+
+```bash
+ls -lh data/evaluation_reports/expert_text_retrieval_results.csv
+ls -lh data/evaluation_reports/expert_vector_retrieval_results.csv
+ls -lh data/evaluation_reports/expert_hybrid_retrieval_results.csv
+```
 
 ### External label-validation output is empty
-
 
 Confirm that the validation script ran successfully:
 
@@ -489,12 +577,17 @@ Then confirm the report exists:
 ls -lh data/evaluation_reports/expert_label_compatibility.csv
 ```
 
+### External benchmark results are being used too early
+
+If benchmark work starts to drift into repeated test-set tuning:
+
+- Stop using `expert_test.tsv` for iterative experiments.
+- Move tuning and rubric design back to `expert_dev.tsv`.
+- Reconfirm that held-out test rows are only used after benchmark rules are frozen.
 
 ---
 
-
 ## Current limits
-
 
 This runbook currently covers:
 
@@ -502,6 +595,16 @@ This runbook currently covers:
 - Database initialisation and record loading
 - Embedding generation
 - Basic database verification
+- Retrieval benchmark execution
+- External repository inspection
 - External Expert-label compatibility validation
 
-Text retrieval, vector retrieval, hybrid retrieval, benchmark curation, answer generation, Streamlit, monitoring, and final evaluation commands will be added after their corresponding modules are implemented and validated.
+This runbook does not yet cover:
+
+- Answer-generation benchmark commands
+- Human-review workflow commands
+- Streamlit interface startup
+- Monitoring and observability
+- Final held-out end-to-end evaluation execution
+
+Those steps should be added only after their corresponding modules, rules, and outputs are implemented and validated.

@@ -10,7 +10,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from src.db import get_connection
+from src.database.db_connection import get_connection
 
 DEFAULT_INPUT_PATH = "data/processed/techniques.jsonl"
 
@@ -248,6 +248,7 @@ def upsert_techniques(connection: Any, rows: list[dict[str, Any]]) -> None:
             description_raw,
             description_clean,
             embedding_text,
+            search_vector,
             source_url,
             source_created_at,
             source_modified_at,
@@ -265,6 +266,7 @@ def upsert_techniques(connection: Any, rows: list[dict[str, Any]]) -> None:
             %(description_raw)s,
             %(description_clean)s,
             %(embedding_text)s,
+            to_tsvector('english', %(embedding_text)s),
             %(source_url)s,
             %(source_created_at)s,
             %(source_modified_at)s,
@@ -282,6 +284,7 @@ def upsert_techniques(connection: Any, rows: list[dict[str, Any]]) -> None:
             description_raw = EXCLUDED.description_raw,
             description_clean = EXCLUDED.description_clean,
             embedding_text = EXCLUDED.embedding_text,
+            search_vector = EXCLUDED.search_vector,
             source_url = EXCLUDED.source_url,
             source_created_at = EXCLUDED.source_created_at,
             source_modified_at = EXCLUDED.source_modified_at,
@@ -361,7 +364,7 @@ def main() -> None:
                 notes=(
                     f"Upserted {len(rows)} records. "
                     f"Techniques table now contains {total_techniques} records. "
-                    "Embeddings were cleared for refreshed records."
+                    "Search vectors were refreshed and embeddings were cleared for refreshed records."
                 ),
             )
 
@@ -383,6 +386,7 @@ def main() -> None:
     print(f"  Input SHA-256:      {input_sha256}")
     print(f"  Records processed:  {len(rows)}")
     print("  Database table:     techniques")
+    print("  Search vectors:     generated in this stage")
     print("  Embeddings:         not generated in this stage")
 
 
