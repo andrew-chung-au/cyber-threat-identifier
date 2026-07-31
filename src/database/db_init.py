@@ -6,7 +6,7 @@ from typing import Any
 
 import psycopg
 
-from src.db import EMBEDDING_DIMENSIONS, get_connection
+from src.database.db_connection import EMBEDDING_DIMENSIONS, get_connection
 
 
 def info(message: str) -> None:
@@ -36,6 +36,7 @@ def create_schema(connection: psycopg.Connection[Any]) -> None:
                 description_raw TEXT NOT NULL,
                 description_clean TEXT NOT NULL,
                 embedding_text TEXT NOT NULL,
+                search_vector tsvector,
                 embedding vector({EMBEDDING_DIMENSIONS}),
                 embedding_model TEXT,
                 embedding_updated_at TIMESTAMPTZ,
@@ -45,6 +46,13 @@ def create_schema(connection: psycopg.Connection[Any]) -> None:
                 loaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
+            """
+        )
+
+        cursor.execute(
+            """
+            ALTER TABLE techniques
+            ADD COLUMN IF NOT EXISTS search_vector tsvector
             """
         )
 
@@ -76,6 +84,14 @@ def create_schema(connection: psycopg.Connection[Any]) -> None:
             """
             CREATE INDEX IF NOT EXISTS techniques_name_idx
             ON techniques (name)
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS techniques_search_vector_gin_idx
+            ON techniques
+            USING gin (search_vector)
             """
         )
 

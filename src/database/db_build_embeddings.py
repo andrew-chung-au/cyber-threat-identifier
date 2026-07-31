@@ -7,7 +7,7 @@ from typing import Any
 
 from sentence_transformers import SentenceTransformer
 
-from src.db import get_connection
+from src.database.db_connection import get_connection
 
 DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_BATCH_SIZE = 64
