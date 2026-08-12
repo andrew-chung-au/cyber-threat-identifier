@@ -4,7 +4,7 @@
 ## Purpose
 
 
-This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, document-reranking, and answer-generation baselines from a clean checkout.
+This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, document-reranking, query-rewriting, and answer-generation baselines from a clean checkout.
 
 
 It covers:
@@ -15,8 +15,9 @@ It covers:
 - ATT&CK data download and extraction
 - Database loading and embedding generation
 - Basic verification
-- Retrieval benchmark execution: text, vector, hybrid, and vector-plus-reranking
+- Retrieval benchmark execution: text, vector, hybrid, vector-plus-reranking, and query-rewrite-plus-reranking
 - Local cross-encoder reranker setup and verification
+- Query-rewriting benchmark execution with optional rate limiting
 - Answer-generation benchmark execution
 - External benchmark repository inspection
 - External Expert-label compatibility validation
@@ -57,7 +58,7 @@ docker compose version
 Run all commands below from the repository root.
 
 
-The current reranking benchmark is designed for local CPU execution. A GPU and ONNX runtime are not required for the current assessed implementation.
+The current reranking and query-rewriting benchmarks are designed for local CPU execution. A GPU and ONNX runtime are not required for the current assessed implementation.
 
 
 ---
@@ -99,7 +100,20 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cyber_threat_identifi
 ```
 
 
-Set any LLM-related configuration required for answer generation in `.env`. Do not commit `.env`.
+Set any LLM-related configuration required for answer generation and query rewriting in `.env`. Do not commit `.env`.
+
+
+The query-rewriting benchmark uses Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) via the OpenAI-compatible API. Ensure `.env` contains:
+
+
+```dotenv
+MODEL_ID=gemini-3.1-flash-lite
+LLM_API_KEY=<your-gemini-api-key>
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+```
+
+
+Do not commit `.env` or share your API key.
 
 
 ---
@@ -383,6 +397,7 @@ Run this smoke test before running the reranking benchmark:
 uv run python -c "
 from src.retrieval.reranker import get_reranker_model
 
+
 get_reranker_model()
 print('Reranker loaded successfully')
 "
@@ -425,6 +440,7 @@ The implemented methods are:
 - Vector retrieval
 - Hybrid retrieval using Reciprocal Rank Fusion
 - Vector retrieval plus local cross-encoder document reranking
+- Query rewriting plus vector retrieval plus reranking
 
 
 ### 1. Run text retrieval benchmark
@@ -525,13 +541,80 @@ Incident narrative
 The CSV includes first-stage vector candidate IDs, original vector ranks, reranker scores, reranked ranks, and timing data.
 
 
+### 5. Run query-rewrite retrieval benchmark
+
+
+Run a small smoke test first (rate limiting enabled by default):
+
+
+```bash
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --limit 5 \
+  --candidate-k 20 \
+  --top-k 10
+```
+
+
+Run the full benchmark with rate limiting (default, ~15 minutes for 226 cases):
+
+
+```bash
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
+```
+
+
+Run without rate limiting (only if you have higher API limits or paid-tier access):
+
+
+```bash
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --no-rate-limit \
+  --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
+```
+
+
+Expected output:
+
+
+```text
+data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
+```
+
+
+Note: This file is written to `data/evaluation_reports/local/` which is ignored by Git because it contains external narrative text.
+
+
+The query-rewriting benchmark uses this flow:
+
+
+```text
+Incident narrative
+  → LLM query rewriting (gemini-3.1-flash-lite)
+  → all-MiniLM-L6-v2 query embedding
+  → top 20 pgvector candidates
+  → local CPU cross-encoder reranking
+  → top 10 ranked candidates for evaluation
+```
+
+
+The CSV includes original and rewritten queries, vector candidate IDs, original vector ranks, reranker scores, reranked ranks, query-rewrite latency, and total retrieval timing.
+
+
 ### Reference results
 
 
 Reference results for the current 226-case benchmark are recorded in [`evaluation-notes.md`](evaluation-notes.md).
 
 
-The currently selected retrieval configuration is vector retrieval plus local cross-encoder reranking. It improved all reported metrics over vector-only retrieval in the current benchmark.
+The currently selected retrieval configuration is vector retrieval plus local cross-encoder reranking (DEC-018). It improved all reported metrics over vector-only retrieval in the current benchmark.
+
+
+Query rewriting improved metrics further but introduced unacceptable latency for interactive use (DEC-019). It is retained as an evaluated best-practice component.
 
 
 Do not describe these results as final held-out performance because the current benchmark contains development- and test-derived cases.
@@ -542,6 +625,7 @@ Do not describe these results as final held-out performance because the current 
 
 ```bash
 ls -lh data/evaluation_reports/expert_*_retrieval_results.csv
+ls -lh data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
 
@@ -552,9 +636,11 @@ Preview vector-plus-reranking diagnostic fields:
 uv run python -c "
 import pandas as pd
 
+
 df = pd.read_csv(
     'data/evaluation_reports/expert_vector_reranked_retrieval_results.csv'
 )
+
 
 print(
     df[
@@ -567,6 +653,36 @@ print(
             'reranked_ranks',
             'reranker_scores',
             'mrr',
+            'total_retrieval_ms',
+        ]
+    ].head(5).to_string(index=False)
+)
+"
+```
+
+
+Preview query-rewriting diagnostic fields:
+
+
+```bash
+uv run python -c "
+import pandas as pd
+
+
+df = pd.read_csv(
+    'data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv'
+)
+
+
+print(
+    df[
+        [
+            'eval_id',
+            'query_text',
+            'rewritten_query',
+            'retrieved_attack_ids',
+            'mrr',
+            'query_rewrite_ms',
             'total_retrieval_ms',
         ]
     ].head(5).to_string(index=False)
@@ -599,6 +715,7 @@ Verify the LLM client configuration:
 ```bash
 uv run python - <<'PY'
 from src.llm_client import get_default_model, get_client
+
 
 print("MODEL_ID:", get_default_model())
 client = get_client()
@@ -673,6 +790,7 @@ This directory must remain ignored by Git because it may contain externally sour
 
 ```bash
 mkdir -p data/external_inspection
+
 
 git clone https://github.com/tumeteor/mitre-ttp-mapping.git \
   data/external_inspection/mitre-ttp-mapping
@@ -756,6 +874,7 @@ Use this only when it is safe to delete the local database volume.
 docker compose down -v
 docker compose up -d
 
+
 uv run python -m src.database.db_init
 uv run python -m src.database.db_load_techniques
 uv run python -m src.database.db_build_embeddings
@@ -769,6 +888,7 @@ To refresh the ATT&CK corpus first:
 uv run python -m src.ingestion.download_attack_data --ref <release-tag-or-commit>
 uv run python -m src.ingestion.extract_attack_techniques
 
+
 uv run python -m src.database.db_init
 uv run python -m src.database.db_load_techniques
 uv run python -m src.database.db_build_embeddings
@@ -781,16 +901,25 @@ After corpus, embedding-model, retrieval-code, or reranker-code changes, rerun t
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
 
+
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
+
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+
+
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
 
@@ -887,6 +1016,7 @@ Run the isolated reranker smoke test:
 uv run python -c "
 from src.retrieval.reranker import get_reranker_model
 
+
 get_reranker_model()
 print('Reranker loaded successfully')
 "
@@ -908,6 +1038,40 @@ A warning about unauthenticated Hugging Face Hub requests is non-fatal if model 
 If downloads fail because of rate limits, configure an `HF_TOKEN` locally or retry after the model cache is available. Never commit a token to `.env.example`, source code, or Git history.
 
 
+### Query-rewriting benchmark runs slowly
+
+
+The query-rewriting benchmark uses Gemini 3.1 Flash Lite with rate limiting at 15 requests/minute by default. This results in approximately 15 minutes of wall-clock time for 226 queries.
+
+
+To disable rate limiting (only if you have higher API limits):
+
+
+```bash
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --no-rate-limit
+```
+
+
+If queries still fail with 429 errors, ensure rate limiting is enabled or reduce concurrency.
+
+
+### LLM API key not configured
+
+
+If query rewriting or answer generation fails with authentication errors:
+
+
+```bash
+cat .env | grep -E "LLM_API_KEY|MODEL_ID|LLM_BASE_URL"
+```
+
+
+Ensure `.env` contains valid Gemini API credentials.
+
+
 ### Retrieval benchmark output missing
 
 
@@ -916,6 +1080,7 @@ ls -lh data/evaluation_reports/expert_text_retrieval_results.csv
 ls -lh data/evaluation_reports/expert_vector_retrieval_results.csv
 ls -lh data/evaluation_reports/expert_hybrid_retrieval_results.csv
 ls -lh data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+ls -lh data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
 
@@ -955,6 +1120,7 @@ This runbook currently covers:
 - Database initialisation, loading, and embeddings
 - Local PostgreSQL with pgvector
 - Text, vector, hybrid, and vector-plus-reranking retrieval benchmarks
+- Query-rewriting retrieval benchmark with optional rate limiting
 - Local cross-encoder reranker validation
 - Answer-generation baseline execution
 - External Expert dataset inspection
@@ -964,7 +1130,6 @@ This runbook currently covers:
 This runbook does not yet cover:
 
 
-- Query rewriting execution
 - Final answer-rubric scoring workflow
 - LLM model-comparison evaluation
 - Streamlit interface startup

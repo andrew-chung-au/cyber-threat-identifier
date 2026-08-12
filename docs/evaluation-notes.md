@@ -99,6 +99,7 @@ The implemented retrieval methods are:
 - **Vector** — pgvector cosine-similarity retrieval using normalised `sentence-transformers/all-MiniLM-L6-v2` embeddings.
 - **Hybrid** — Reciprocal Rank Fusion over text and vector ranked candidate lists.
 - **Vector + reranking** — top 20 vector candidates reordered by a local cross-encoder.
+- **Query rewrite + vector + reranking** — LLM-rewritten queries followed by vector retrieval and reranking.
 
 
 ### Implemented benchmark commands
@@ -107,20 +108,32 @@ The implemented retrieval methods are:
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
 
+
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
+
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+
+
+uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
 
 The reranking benchmark fails if the local reranker cannot load. It does not silently fall back to vector-only retrieval, preventing invalid reranking results from being reported.
+
+
+The query-rewrite benchmark uses Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) with optional rate limiting at 15 requests/minute (default enabled). Use `--no-rate-limit` to disable client-side rate limiting for batch tasks.
 
 
 ### Text, vector, and hybrid findings
@@ -230,19 +243,110 @@ CPU reranking is the dominant contributor to end-to-end retrieval latency.
 Vector-only latency was not separately instrumented in the current vector benchmark. The reported reranking timings therefore establish the latency of the selected two-stage configuration, but do not yet provide a complete like-for-like vector-only latency comparison.
 
 
+### Query rewriting experiment
+
+
+A query-rewriting configuration was implemented and benchmarked on 2026-08-13.
+
+
+The pipeline is:
+
+
+```text
+Incident narrative
+  → LLM query rewriting with gemini-3.1-flash-lite
+  → Query embedding with all-MiniLM-L6-v2
+  → pgvector cosine-similarity retrieval of top 20 ATT&CK records
+  → Cross-encoder scoring of rewritten query and structured ATT&CK record pairs
+  → Return top 10 reranked candidates for benchmark evaluation
+```
+
+
+Configuration:
+
+
+| Setting | Value |
+|---|---|
+| Query-rewrite model | `gemini-3.1-flash-lite` |
+| Query-rewrite prompt | v1 (behaviour-focused, detail-preserving) |
+| Rate limiting | 15 requests/minute (default enabled) |
+| First-stage retrieval | Vector retrieval with pgvector cosine similarity |
+| Query embedding model | `sentence-transformers/all-MiniLM-L6-v2` |
+| Candidate pool | Top 20 vector candidates |
+| Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| Reranker execution | Local CPU |
+| Reranker document text | Existing structured ATT&CK `embedding_text` |
+| Benchmark output depth | Top 10 |
+| Benchmark cases | 226 Expert-derived cases |
+
+
+The query rewriter receives the full incident narrative and returns a concise ATT&CK-oriented retrieval query. Prompt instructions direct the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
+
+
+### Vector + rerank versus query rewrite + vector + rerank results
+
+
+| Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
+|---|---:|---:|---:|
+| Recall@1 | 0.1462 | 0.1495 | +0.0033 |
+| Recall@3 | 0.2526 | 0.2966 | +0.0440 |
+| Recall@5 | 0.3104 | 0.3507 | +0.0403 |
+| Recall@10 | 0.3866 | 0.4581 | +0.0715 |
+| Hit@3 | 0.4159 | 0.4690 | +0.0531 |
+| Hit@10 | 0.5973 | 0.6726 | +0.0753 |
+| MRR | 0.3578 | 0.3940 | +0.0362 |
+
+
+Query rewriting improves all reported ranking metrics over the DEC-018 vector-plus-reranking baseline.
+
+
+The improvements are most pronounced at deeper cutoffs:
+
+
+- Recall@10 increased from 0.3866 to 0.4581.
+- Hit@10 increased from 0.5973 to 0.6726.
+- MRR increased from 0.3578 to 0.3940.
+
+
+These results indicate that query rewriting helps retrieve additional relevant candidates that were absent from the top 20 vector pool, while also improving the ordering of candidates within the reranked set.
+
+
+### Query rewriting latency
+
+
+The query-rewrite benchmark records query rewriting, embedding, vector search, reranking, and total retrieval timing.
+
+
+| Timing metric | Result |
+|---|---:|
+| Median total retrieval time | 4,362.28 ms |
+| P95 total retrieval time | 12,202.92 ms |
+| Median query-rewrite time | 3,183.88 ms |
+| P95 query-rewrite time | 10,954.94 ms |
+
+
+Query rewriting is the dominant contributor to end-to-end retrieval latency, adding approximately 3.1 seconds median latency and up to 11 seconds at P95 compared to the DEC-018 baseline.
+
+
+Rate limiting at 15 requests/minute worked as expected, with 226 queries completing in approximately 15 minutes of wall-clock time.
+
+
 ### Retrieval decision
 
 
 Vector retrieval plus local cross-encoder reranking is the selected v1 retrieval configuration.
 
 
-The selection is based on consistent improvement across Recall@1/3/5/10, Hit@3/10, and MRR relative to vector-only retrieval. In the final synced local CPU benchmark run, median total retrieval latency was 1,254.79 ms, p95 total latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms. This latency trade-off is accepted for the initial analyst-assist workflow because ranking quality improved at every measured cutoff.
+The selection is based on consistent improvement across Recall@1/3/5/10, Hit@3/10, and MRR relative to vector-only retrieval, combined with acceptable latency for interactive analyst-assist workflows. In the final synced local CPU benchmark run, median total retrieval latency was 1,254.79 ms, p95 total latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms.
 
 
-Retain text-only, vector-only, and hybrid retrieval as implemented baselines and diagnostic tools.
+Query rewriting improved all reported metrics but introduced unacceptable latency (~3.1s median, ~11s P95) for interactive use. It is documented as an evaluated best-practice component (DEC-019) and retained for future re-evaluation under conditions such as lower-latency LLM endpoints, improved prompts, or hybrid retrieval strategies.
 
 
-The selected default is documented in DEC-018. It supersedes DEC-015 only for the default v1 retrieval configuration.
+Retain text-only, vector-only, hybrid retrieval, and query-rewrite retrieval as implemented baselines and diagnostic tools.
+
+
+The selected default is documented in DEC-018. It supersedes DEC-015 only for the default v1 retrieval configuration. The query-rewriting evaluation and decision are documented in DEC-019.
 
 
 ### Interpretation and limitations
@@ -257,10 +361,16 @@ The current 226-case file contains development- and test-derived cases. It shoul
 The reranker cannot recover techniques that are absent from the first-stage top 20 vector candidates. It improves ordering only within the vector candidate pool.
 
 
+Query rewriting can recover candidates outside the original vector pool by changing the query embedding, but at significant latency cost.
+
+
 The selected reranker is a compact general-domain MS MARCO cross-encoder. It is an evaluated baseline, not evidence that this is the optimal model for ATT&CK retrieval.
 
 
-ONNX optimisation, GPU execution, reranker-model comparison, and candidate-pool-depth tuning are deferred. They are future performance experiments, not required for the current assessed implementation.
+The query-rewriting model (Gemini 3.1 Flash Lite) is an evaluated baseline; alternative models or prompts may yield different quality-latency trade-offs.
+
+
+ONNX optimisation, GPU execution, reranker-model comparison, candidate-pool-depth tuning, and query-rewrite prompt optimisation are deferred. They are future performance experiments, not required for the current assessed implementation.
 
 
 ---
@@ -477,7 +587,7 @@ Store one retrieval result per evaluation case and configuration.
   "top_k": 10,
   "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
   "retrieved_attack_ids": ["T1105", "T1041", "T1119"],
-    "original_vector_ranks": [1, 2, 8],
+  "original_vector_ranks":,[1][2][8]
   "reranker_scores": [4.1, 3.7, 3.2],
   "embedding_ms": 0,
   "vector_search_ms": 0,
@@ -533,6 +643,7 @@ Current retrieval result files include:
 - `expert_vector_retrieval_results.csv`
 - `expert_hybrid_retrieval_results.csv`
 - `expert_vector_reranked_retrieval_results.csv`
+- `expert_query_rewrite_retrieval_results.csv` (local, contains external narratives)
 
 
 Current answer-generation files include:
