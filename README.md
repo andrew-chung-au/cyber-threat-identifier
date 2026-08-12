@@ -1,177 +1,231 @@
 # Cyber Threat Identifier
 
+
 Cyber Threat Identifier is an evidence-oriented retrieval system that maps unstructured cyber incident narratives to likely Enterprise MITRE ATT&CK® techniques and sub-techniques.
 
-It helps analysts review ranked technique candidates, source-grounded descriptions, and relevant metadata. It supports analyst judgement; it does not determine attribution, severity, incident-response actions, or complete behavioural coverage.
 
-> **Project status (v1):**  
-> - Source-to-vector pipeline, text retrieval, vector retrieval, hybrid retrieval, and external label-compatibility checks are implemented and tested.  
-> - Vector retrieval is the default candidate backend; hybrid is a slightly stronger but more complex alternative kept as a benchmarked option.  
-> - Candidate-answer generation is implemented and under evaluation; benchmark curation and human-review scoring are in progress.
+It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and relevant metadata. It supports analyst judgement; it does not determine attribution, severity, incident-response actions, or complete behavioural coverage.
+
+
+> **Project status (v1):**
+> - The ATT&CK ingestion, PostgreSQL + pgvector database, text, vector, hybrid, and local document-reranking retrieval paths are implemented.
+> - Vector retrieval plus local cross-encoder reranking is the selected v1 retrieval configuration based on the current 226-case Expert-derived benchmark.
+> - The answer-generation baseline is implemented and currently uses vector retrieval to produce structured, retrieval-grounded outputs; reranked-retrieval integration, rubric-scored answer evaluation, and model comparison remain in progress.
+> - An analyst-facing Streamlit UI, monitoring dashboard, query rewriting, and frozen held-out external benchmark are planned next.
+
 
 ---
 
+
 ## Problem
 
-Security analysts often work from unstructured material such as alert notes, ticket comments, investigation summaries, and case write-ups.
 
-Mapping those narratives to adversary behaviours can be slow and inconsistent. Cyber Threat Identifier provides a transparent retrieval layer over Enterprise ATT&CK techniques, returning relevant candidate records and source evidence for analyst review.
+Security analysts often work from unstructured material such as alert notes, ticket comments, investigation summaries, and incident write-ups.
+
+
+Mapping those narratives to adversary behaviours can be slow and inconsistent. Cyber Threat Identifier provides a transparent ATT&CK retrieval layer that returns ranked technique candidates and source-grounded evidence for analyst review.
+
 
 ```text
 Incident narrative
         ↓
-Ranked likely technique candidates
+Ranked likely ATT&CK technique candidates
         ↓
-Source-grounded evidence and metadata
+ATT&CK descriptions and metadata
+        ↓
+Structured candidate assessment
         ↓
 Analyst review
 ```
 
+
 ---
+
 
 ## Scope
 
-Version 1 focuses on a narrow incident-to-technique task: given a narrative, retrieve plausible Enterprise ATT&CK techniques and sub-techniques and generate a candidate-focused summary for analyst review.
+
+Version 1 focuses on a narrow incident-to-technique task: given an incident narrative, retrieve plausible Enterprise ATT&CK techniques and sub-techniques, then generate a candidate-focused summary for analyst review.
+
 
 ### Included
+
 
 - Official Enterprise MITRE ATT&CK STIX 2.1 data.
 - Active ATT&CK techniques and sub-techniques only.
 - Technique IDs, names, tactics, platforms, descriptions, URLs, and timestamps.
-- Reproducible download, extraction, PostgreSQL loading, and embedding stages.
-- A small internal benchmark for early pipeline checks.
-- An external benchmark candidate based on expert-labelled threat-report narratives.
-- Candidate-oriented answers grounded in retrieved ATT&CK records (initial implementation).
+- Reproducible ATT&CK download, extraction, PostgreSQL loading, and embedding stages.
+- Text, vector, hybrid, and vector-plus-reranking retrieval evaluation.
+- A local CPU cross-encoder reranker over vector-retrieved ATT&CK candidates.
+- An external Expert-derived evaluation source for retrieval and future answer evaluation.
+- Initial structured candidate-answer generation grounded in retrieved ATT&CK records.
+
 
 ### Out of scope
+
 
 - Threat actor, group, or campaign attribution.
 - Incident severity assessment or triage decisions.
 - Incident-response recommendations or playbooks.
 - Attack-path planning or reconstruction.
 - Detection engineering automation.
+- Confirming that a technique definitively occurred in an incident.
 - ATT&CK groups, software, campaigns, mitigations, relationships, detection content, and data sources as primary retrieval units.
 - External incident reports or vendor intelligence as primary retrieval corpus records.
-- Confirming that a technique occurred in an incident.
+
 
 ---
 
-## Data and pipeline
 
-The project uses the official Enterprise MITRE ATT&CK STIX 2.1 dataset. Version 1 extracts active Enterprise `attack-pattern` objects from the official ATT&CK STIX source.
+## Data and retrieval flow
+
+
+The project uses active Enterprise ATT&CK `attack-pattern` objects from the official ATT&CK STIX source.
+
 
 ```text
 Official Enterprise ATT&CK STIX source
         ↓
-Download raw STIX bundle
-        ↓
 Extract active techniques and sub-techniques
         ↓
-Write processed JSONL corpus
+Processed JSONL corpus
         ↓
-Load canonical records into PostgreSQL
+PostgreSQL + pgvector
         ↓
-Generate embeddings with pgvector storage
+all-MiniLM-L6-v2 vector retrieval
         ↓
-Retrieve technique candidates from incident narratives
+Top 20 ATT&CK candidates
         ↓
-Generate grounded candidate answers
+Local cross-encoder reranking
         ↓
-Evaluate retrieval and answers
+Ranked candidate techniques
+        ↓
+Future analyst-facing retrieval and answer-generation integration
 ```
 
+
 The retrieval unit is intentionally simple:
+
 
 ```text
 one ATT&CK technique or sub-technique
 = one processed JSONL record
 = one PostgreSQL row
+= one structured embedding_text field
 = one embedding vector
 = one retrieval result
 ```
 
-There is no chunking in v1. Each technique record is a compact, self-contained source unit that retains its identity, metadata, description, and provenance.
+
+Version 1 does not chunk ATT&CK technique records. Each record remains a complete source-native unit with technique identity, tactics, platforms, description, and provenance retained together.
+
 
 ---
+
+
+## Retrieval evaluation
+
+
+The current retrieval benchmark uses 226 Expert-derived cases in:
+
+
+```text
+data/eval/expert_retrieval_cases.csv
+```
+
+
+It compares text-only retrieval, vector retrieval, hybrid retrieval using Reciprocal Rank Fusion, and vector retrieval plus local document reranking.
+
+
+| Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Text | 0.0088 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0111 |
+| Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
+| Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
+| Vector + reranking | 0.1462 | 0.2526 | 0.3104 | 0.3866 | 0.4159 | 0.5973 | 0.3578 |
+
+
+The selected v1 configuration is:
+
+
+```text
+sentence-transformers/all-MiniLM-L6-v2
+        ↓
+pgvector cosine-similarity retrieval of top 20 records
+        ↓
+cross-encoder/ms-marco-MiniLM-L-6-v2 reranking on local CPU
+        ↓
+Ranked ATT&CK candidates
+```
+
+
+Vector-plus-reranking improved every reported retrieval metric over vector-only retrieval. MRR increased from 0.3134 to 0.3578, and Hit@3 increased from 0.3540 to 0.4159.
+
+
+The quality improvement has a latency cost: median end-to-end retrieval time was 1,254.79 ms, p95 end-to-end latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms on the current local CPU benchmark. This trade-off is accepted for the v1 analyst-assist workflow.
+
+
+These results are implementation-comparison results, not final held-out performance. The current 226-case input includes development- and test-derived records; final external evaluation will use frozen development-split curation rules before evaluation against the held-out Expert test split.
+
+
+Full benchmark methodology, results, and limitations are documented in [`docs/evaluation-notes.md`](docs/evaluation-notes.md).
+
+
+---
+
 
 ## Current implementation
 
+
 ### Completed
 
-- Download official Enterprise ATT&CK STIX data and record acquisition provenance.
-- Extract active Enterprise techniques and sub-techniques; exclude deprecated and revoked records from the active retrieval corpus.
-- Preserve raw descriptions alongside cleaned retrieval text.
-- Write `data/processed/techniques.jsonl`.
-- Initialise PostgreSQL with pgvector and create `techniques` and `ingestion_runs` tables.
-- Load and upsert canonical technique records.
-- Generate normalised baseline embeddings with `sentence-transformers/all-MiniLM-L6-v2`.
-- Record ingestion and embedding runs in an audit table.
-- Implement:
-  - a text-retrieval baseline over the active technique corpus,
-  - a vector-retrieval backend over the same corpus,
-  - a hybrid retrieval baseline using Reciprocal Rank Fusion over text and vector ranked lists.
-- Run retrieval benchmarks comparing text, vector, and hybrid retrieval over Expert-derived evaluation cases.
-- Inspect an external expert-labelled threat-report dataset for future end-to-end evaluation.
-- Validate external benchmark labels against the current active Enterprise ATT&CK corpus.
-- Implement a first answer-generation path that:
-  - retrieves top-k ATT&CK candidates via vector search,
-  - asks an LLM to select a primary and alternate techniques,
-  - constrains the answer to retrieved ATT&CK records,
-  - records uncertainty and a review-required flag.
+
+- Download and provenance tracking for official Enterprise ATT&CK STIX data.
+- Extraction of active Enterprise ATT&CK techniques and sub-techniques.
+- Exclusion of deprecated and revoked objects from the active retrieval corpus.
+- Processed ATT&CK corpus output at `data/processed/techniques.jsonl`.
+- PostgreSQL + pgvector database initialisation.
+- Technique loading, upserting, embedding generation, and ingestion audit records.
+- Normalised local embeddings using `sentence-transformers/all-MiniLM-L6-v2`.
+- Text retrieval baseline.
+- Vector retrieval baseline.
+- Hybrid retrieval baseline using Reciprocal Rank Fusion.
+- Local document reranking using `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- Retrieval benchmark scripts and per-case evaluation reports.
+- External Expert-label compatibility validation.
+- Structured answer-generation baseline with primary candidate, alternatives, supporting IDs, uncertainty, grounding note, and review-required output.
+
 
 ### Planned
 
-- Refine candidate-answer prompts and format based on retrieval and rubric results.
-- Curate the external Expert development split and freeze inclusion rules before using the held-out test split.
-- Run scored human-review evaluations using a rubric for:
-  - candidate validity,
-  - retrieval grounding,
-  - narrative grounding,
-  - uncertainty handling,
-  - analyst usefulness.
-- Use failure analysis to refine retrieval configuration (e.g., vector depth, hybrid parameters) and answer prompts.
-- Implement an analyst-facing Streamlit interface to:
-  - accept incident narratives,
-  - show ranked ATT&CK candidates and evidence,
-  - display generated answers and metadata,
-  - capture human-review scores and notes.
-- Add optional monitoring and user feedback hooks.
 
-At the current retrieval benchmark, hybrid retrieval is slightly stronger than pure vector retrieval on some ranking metrics (e.g., Recall@1/3, Hit@3, MRR) but identical at higher cutoffs. Vector retrieval is therefore the current default retrieval backend for v1 because it is simpler and cheaper to run, with hybrid retained as an evaluated alternative that can be promoted later if future gains justify the additional complexity.
+- Evaluate constrained user query rewriting against the selected reranked retrieval baseline.
+- Compare answer-generation prompts and LLM models using fixed retrieval context.
+- Finalise a human-readable answer-evaluation rubric and score a review subset.
+- Freeze curation rules using `expert_dev.tsv`.
+- Run final held-out external evaluation against compatible curated `expert_test.tsv` cases.
+- Implement a Streamlit analyst-facing interface.
+- Add analyst feedback capture and a monitoring dashboard.
+- Containerise the full application stack, not only PostgreSQL.
+
 
 ---
 
-## Evaluation overview
-
-Evaluation distinguishes retrieval quality from answer quality.
-
-| Layer | Question | Example measures |
-|---|---|---|
-| Retrieval | Are relevant active ATT&CK records returned near the top? | Hit@k, Recall@k, MRR, latency |
-| Answer generation | Is the answer concise, appropriately uncertain, and grounded in the narrative and retrieved records? | Human rubric for validity, grounding, and usefulness |
-| Reproducibility | Can the same fixed corpus and configuration reproduce comparable results? | Pinned source version, fixed benchmark, logged model and prompt settings |
-
-The project uses:
-
-- an internal small benchmark for early pipeline checks, and
-- the Expert subset of the public Security-TTP-Mapping dataset as an external candidate benchmark.
-
-The external Expert test split contains 157 expert-labelled threat-report narratives; 153 records contain only labels active in the current Enterprise ATT&CK corpus. External narratives remain local during feasibility and development; the project does not redistribute copied third-party threat-report passages.
-
-Details of metrics, benchmark design, and experiment results live in `docs/evaluation-notes.md`.
-
----
 
 ## Quick start
 
+
 ### Prerequisites
 
+
 - Python version specified in `pyproject.toml`.
-- [uv](https://docs.astral.sh/uv/) for environment and dependency management.
-- Docker Desktop (or compatible Docker engine).
+- [uv](https://docs.astral.sh/uv/).
+- Docker Desktop or compatible Docker engine.
 - Git.
 
+
 ### Install and configure
+
 
 ```bash
 git clone <repository-url>
@@ -185,11 +239,12 @@ docker compose up -d
 docker compose ps
 ```
 
-Wait until PostgreSQL reports as healthy before running database stages.
+
+Wait until PostgreSQL reports as healthy before continuing.
+
 
 ### Build the corpus
 
-Run these commands from the repository root:
 
 ```bash
 uv run python -m src.ingestion.download_attack_data
@@ -203,25 +258,60 @@ uv run python -m src.database.db_load_techniques
 uv run python -m src.database.db_build_embeddings
 ```
 
-The pipeline produces:
+
+This produces:
+
 
 ```text
 data/processed/techniques.jsonl
 data/source_manifest.csv
 ```
 
-and populates the PostgreSQL tables:
+
+and populates:
+
 
 ```text
 techniques
 ingestion_runs
 ```
 
-For setup details, database checks, rebuild instructions, retrieval-benchmark commands, and troubleshooting, see `docs/runbook.md`.
+
+### Run the selected retrieval benchmark
+
+
+Verify that the local reranker can load:
+
+
+```bash
+uv run python -c "
+from src.retrieval.reranker import get_reranker_model
+
+get_reranker_model()
+print('Reranker loaded successfully')
+"
+```
+
+
+Run vector retrieval plus reranking:
+
+
+```bash
+uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
+  --candidate-k 20 \
+  --top-k 10 \
+  --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+```
+
+
+For complete setup, verification, retrieval benchmarks, answer-generation commands, rebuild instructions, and troubleshooting, see [`docs/runbook.md`](docs/runbook.md).
+
 
 ---
 
+
 ## Repository structure
+
 
 ```text
 cyber-threat-identifier/
@@ -234,100 +324,102 @@ cyber-threat-identifier/
 ├── app.py
 │
 ├── src/
-│   ├── __init__.py
-│   ├── db.py
 │   ├── llm_client.py
-│   ├── pricing.py
 │   ├── ingestion/
-│   │   ├── __init__.py
 │   │   ├── download_attack_data.py
 │   │   └── extract_attack_techniques.py
 │   ├── database/
-│   │   ├── __init__.py
 │   │   ├── db_init.py
 │   │   ├── db_load_techniques.py
 │   │   └── db_build_embeddings.py
 │   ├── retrieval/
-│   │   ├── __init__.py
+│   │   ├── embedding_model.py
+│   │   ├── schemas.py
 │   │   ├── text.py
 │   │   ├── vector.py
 │   │   ├── hybrid.py
-│   │   └── embedding_model.py
-│   ├── evaluation/
-│   │   ├── __init__.py
-│   │   ├── metrics.py
-│   │   ├── run_expert_text_retrieval_benchmark.py
-│   │   ├── run_expert_vector_retrieval_benchmark.py
-│   │   ├── run_expert_hybrid_retrieval_benchmark.py
-│   │   ├── run_expert_answer_generation.py
-│   │   ├── run_expert_answer_judge.py
-│   │   └── validate_external_expert_labels.py
+│   │   ├── reranker.py
+│   │   └── reranked_vector.py
 │   ├── generation/
-│   │   ├── __init__.py
 │   │   ├── schemas.py
 │   │   ├── prompts.py
 │   │   └── answer_generator.py
+│   ├── evaluation/
+│   │   ├── metrics.py
+│   │   ├── build_expert_retrieval_cases.py
+│   │   ├── run_expert_text_retrieval_benchmark.py
+│   │   ├── run_expert_vector_retrieval_benchmark.py
+│   │   ├── run_expert_hybrid_retrieval_benchmark.py
+│   │   ├── run_expert_reranked_vector_retrieval_benchmark.py
+│   │   ├── run_expert_answer_generation.py
+│   │   ├── run_expert_answer_judge.py
+│   │   └── validate_external_expert_labels.py
 │   └── monitoring/
-│       └── __init__.py
 │
 ├── data/
-│   ├── raw/
-│   │   └── attack/
 │   ├── processed/
 │   │   └── techniques.jsonl
 │   ├── eval/
 │   │   └── expert_retrieval_cases.csv
 │   ├── evaluation_reports/
-│   │   ├── expert_text_retrieval_results.csv
-│   │   ├── expert_vector_retrieval_results.csv
-│   │   ├── expert_hybrid_retrieval_results.csv
-│   │   ├── expert_label_compatibility.csv
-│   │   └── expert_answer_generation_v1.csv
-│   ├── external_inspection/
 │   └── source_manifest.csv
 │
-├── docs/
-│   ├── project-log.md
-│   ├── decisions.md
-│   ├── dataset-notes.md
-│   ├── evaluation-notes.md
-│   └── runbook.md
-│
-└── tests/
+└── docs/
+    ├── project-log.md
+    ├── decisions.md
+    ├── dataset-notes.md
+    ├── evaluation-notes.md
+    └── runbook.md
 ```
 
+
 ---
+
 
 ## Documentation
 
+
 | Document | Purpose |
 |---|---|
-| `docs/runbook.md` | Setup, pipeline execution, verification, reset, retrieval and generation commands, troubleshooting |
-| `docs/dataset-notes.md` | Corpus scope, provenance, schema, processing, artefact policy, limitations |
-| `docs/decisions.md` | Stable architecture, corpus, evaluation, and publication decisions |
-| `docs/evaluation-notes.md` | Benchmark design, metrics, experiments, retrieval and answer results, failure analysis |
-| `docs/project-log.md` | Chronological implementation progress, discoveries, and next steps |
+| [`docs/runbook.md`](docs/runbook.md) | Setup, pipeline commands, verification, rebuilds, benchmarks, and troubleshooting |
+| [`docs/dataset-notes.md`](docs/dataset-notes.md) | Corpus scope, provenance, schema, processing rules, artefact policy, and limitations |
+| [`docs/decisions.md`](docs/decisions.md) | Stable architecture, corpus, retrieval, and evaluation decisions |
+| [`docs/evaluation-notes.md`](docs/evaluation-notes.md) | Benchmark design, metrics, retrieval results, answer evaluation, and failure analysis |
+| [`docs/project-log.md`](docs/project-log.md) | Chronological progress, discoveries, and immediate next steps |
+
 
 ---
+
 
 ## Limitations
 
-- The v1 retrieval corpus contains active Enterprise ATT&CK techniques and sub-techniques only.
-- Returned results are relevance suggestions for analyst review, not verified incident findings.
-- The embedding model (`all-MiniLM-L6-v2`) is a baseline and may change after comparative answer evaluation.
-- ATT&CK coverage does not guarantee that every observed behaviour or technique variation is represented.
-- The external benchmark candidate is multi-label and must be curated using frozen development-split rules before final held-out evaluation.
-- An external benchmark narrative may legitimately correspond to several techniques; a single returned candidate does not establish complete behavioural coverage.
+
+- The retrieval corpus contains active Enterprise ATT&CK techniques and sub-techniques only.
+- Results are ranked relevance suggestions for analyst review, not verified incident findings.
+- The local reranker can improve ordering only within its first-stage vector candidate pool; it cannot recover techniques absent from the vector top 20.
+- The selected reranker is a compact general-domain model, not a cyber-security-specific reranker.
+- Local CPU reranking adds approximately 1.2 seconds median latency in the current benchmark.
+- The current answer-generation pipeline is a baseline; prompt, model, abstention behaviour, and rubric-scored quality are still under evaluation.
+- The external Expert dataset is multi-label and does not provide a verified single primary technique.
+- The current 226-case benchmark is not a frozen held-out benchmark.
+- ATT&CK coverage does not guarantee complete behavioural, defensive, detection, or incident-response coverage.
+
 
 ---
 
+
 ## MITRE ATT&CK attribution
+
 
 Cyber Threat Identifier is an independent project. It is not affiliated with, sponsored by, or endorsed by The MITRE Corporation.
 
-MITRE ATT&CK® is used as the project’s source knowledge base. The project name does not use ATT&CK because MITRE’s branding guidance restricts use of ATT&CK in product, service, company, and logo names.
 
-The repository contains derived ATT&CK content. Before distributing a corpus snapshot or other derived artefact, retain the applicable MITRE copyright, licence, and attribution wording.
+MITRE ATT&CK® is used as the project’s source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
 
-- MITRE ATT&CK Terms of Use  
-- MITRE ATT&CK Legal and Branding Guidance  
+
+The repository contains derived ATT&CK content. Any distributed corpus snapshot or derived artefact must retain applicable MITRE copyright, licence, and attribution wording.
+
+
+- [MITRE ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/)
+- [MITRE ATT&CK Legal and Branding Guidance](https://attack.mitre.org/resources/legal-and-branding/)
+- [Security-TTP-Mapping repository](https://github.com/tumeteor/mitre-ttp-mapping)

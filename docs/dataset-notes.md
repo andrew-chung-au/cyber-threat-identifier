@@ -61,6 +61,32 @@ The rationale for this retrieval-unit choice is recorded in `DEC-008`. Vector-in
 
 ---
 
+### Reranking use
+
+The retrieval unit remains unchanged when document reranking is enabled.
+
+For the selected v1 retrieval configuration, the system first retrieves a larger candidate pool of complete ATT&CK technique or sub-technique records using vector search. It then reranks those already retrieved records using a local cross-encoder.
+
+The reranker receives the existing structured `embedding_text` field for each candidate. It does not create new document chunks, modify ATT&CK source content, or add a second corpus representation.
+
+The current selected reranking flow is:
+
+```text
+Incident narrative
+        ↓
+Top 20 vector-retrieved ATT&CK records
+        ↓
+Cross-encoder comparison against each record's embedding_text
+        ↓
+Reranked ATT&CK candidates
+        ↓
+Top 10 for retrieval evaluation / smaller top-k planned for future answer-generation integration and analyst UI
+```
+
+Reranking configuration, benchmark results, latency, and default-retrieval selection are documented in [`evaluation-notes.md`](evaluation-notes.md) and DEC-018 in [`decisions.md`](decisions.md).
+
+---
+
 ## Corpus boundaries
 
 ### Included in version 1
@@ -194,7 +220,7 @@ The downloader supports two source-reference modes:
 | Default repository reference | Refresh the corpus against the current upstream source state | Development and current-data inspection |
 | Fixed release tag or commit | Rebuild a stable corpus version        | Retrieval experiments, reported metrics, and reproducible portfolio results |
 
-A reported evaluation result must identify:
+A formal comparable evaluation result must identify:
 
 - The ATT&CK source reference, release tag, or commit
 - Relevant source checksum from the manifest
@@ -471,18 +497,33 @@ Technique: <name>
 Tactics: <display tactic names>
 Platforms: <platform names>
 
-
 Description:
 <description_clean>
 ```
 
 This keeps technique identity and useful metadata associated with the source description used for semantic retrieval.
 
-Embeddings are generated after structured records are loaded. The current local baseline model and vector-index strategy are implementation decisions recorded in `DEC-011` and `DEC-012`.
+The same `embedding_text` field is also used as the document representation for local cross-encoder reranking. For each incident narrative, the reranker compares the narrative with the complete structured ATT&CK text for candidates returned by first-stage vector retrieval.
 
-Answer-generation uses retrieved records from this database as context but does not alter the stored corpus; prompts, models, and answer schemas are described in `evaluation-notes.md` and `decisions.md`.
+The project does not maintain a separate reranking corpus, duplicate ATT&CK descriptions, or document chunks for the current technique corpus.
 
-Database setup, embedding commands, and verification checks are maintained in [`runbook.md`](runbook.md).
+Embeddings are generated after structured records are loaded. The current local embedding baseline and vector-index strategy are implementation decisions recorded in DEC-011 and DEC-012.
+
+The selected v1 retrieval configuration is recorded in DEC-018:
+
+```text
+all-MiniLM-L6-v2 query embedding
+        ↓
+pgvector cosine-similarity retrieval of top 20 candidates
+        ↓
+Local CPU cross-encoder reranking
+        ↓
+Ranked ATT&CK technique or sub-technique candidates
+```
+
+Answer generation uses retrieved records from this database as context but does not alter the stored corpus. Prompts, models, answer schemas, retrieval experiments, and reranking metrics are described in [`evaluation-notes.md`](evaluation-notes.md) and [`decisions.md`](decisions.md).
+
+Database setup, embedding commands, reranking benchmark commands, and verification checks are maintained in [`runbook.md`](runbook.md).
 
 ---
 
@@ -582,6 +623,7 @@ The pipeline currently checks:
 - JSONL validity before database loading
 - Duplicate processed `attack_id` values before database loading
 - SHA-256 fingerprinting of processed JSONL input
+- Construction of `embedding_text` from ATT&CK ID, name, tactics, platforms, and cleaned description during database loading
 
 ### Current external benchmark checks
 
@@ -609,6 +651,10 @@ The external dataset feasibility process currently checks:
 - Frozen curation rules for the external benchmark
 - Retrieval-result inspection against the curated benchmark
 - Human review of candidate validity, retrieval grounding, narrative grounding, uncertainty handling, and analyst usefulness
+- Reranker candidate-text validation to confirm that every reranked candidate has an ATT&CK ID, name, vector score, original vector rank, and non-empty `embedding_text`
+- First-stage candidate-pool diagnostics to measure when expected labels are absent from the vector top-20 pool and therefore unavailable to the reranker
+- Reranking regression check to compare vector rank and reranked rank for expected ATT&CK labels
+- Reranker model availability check for the analyst-facing runtime path, with explicit vector-only fallback behaviour if the local model cannot load
 
 Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md`](evaluation-notes.md).
 
@@ -627,6 +673,11 @@ Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md
 - The external dataset's README declares CC BY 4.0, but it does not itemise the provenance or original redistribution terms for each underlying threat-report paragraph.
 - The external benchmark remains a candidate until development-split curation rules, answer format, and evaluation rubric are frozen.
 - Answer-generation behaviour is still evolving; the current pipeline and output schema are treated as a baseline and may change as evaluation findings accumulate.
+- The current reranker can only reorder ATT&CK candidates returned by the first-stage vector retrieval. It cannot recover a relevant technique that is absent from the vector candidate pool.
+- The selected reranker, `cross-encoder/ms-marco-MiniLM-L-6-v2`, is a compact general-domain model rather than a cyber-security-specific reranker.
+- Local CPU reranking adds measurable latency. On the current 226-case Expert-derived retrieval benchmark, median reranking time was approximately 1.20 seconds; detailed latency measurements and selection rationale are recorded in `evaluation-notes.md`.
+- The reranker uses the existing structured ATT&CK `embedding_text` field. It does not provide additional source evidence beyond the technique metadata and cleaned ATT&CK description already stored in the corpus.
+- ONNX optimisation, GPU execution, and alternative reranker-model comparison are deferred performance experiments and are not part of the current corpus-processing pipeline.
 
 ---
 
@@ -659,3 +710,5 @@ See:
 - When should procedure examples be added as a separate evidence layer?
 - What frozen curation thresholds should be selected from `expert_dev.tsv`?
 - What public artefact, if any, may contain external threat-report narrative text after provenance and redistribution review?
+- Should the future analyst interface expose vector-only and vector-plus-reranking modes, or only the selected reranked configuration with a visible fallback state?
+- Should a future corpus expansion add a dedicated supporting-evidence layer, such as ATT&CK procedure examples or relationship-derived evidence, while preserving the current technique-level retrieval unit?

@@ -56,7 +56,8 @@ def retrieve_vector_candidates(
         SELECT
             attack_id,
             name,
-            1 - (embedding <=> %s::vector) AS retrieval_score
+            embedding_text,
+            1 - (embedding <=> %s::vector) AS vector_score
         FROM techniques
         WHERE embedding IS NOT NULL
         ORDER BY embedding <=> %s::vector
@@ -71,7 +72,12 @@ def retrieve_vector_candidates(
         VectorCandidate(
             attack_id=attack_id,
             name=name,
-            vector_score=float(score),
+            rerank_text=embedding_text,
+            vector_score=float(vector_score),
+            vector_rank=rank,
         )
-        for attack_id, name, score in rows
+        for rank, (attack_id, name, embedding_text, vector_score) in enumerate(
+            rows,
+            start=1,
+        )
     ]

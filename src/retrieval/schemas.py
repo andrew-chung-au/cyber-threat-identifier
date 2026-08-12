@@ -23,6 +23,8 @@ class VectorCandidate:
     attack_id: str
     name: str
     vector_score: float
+    vector_rank: int
+    rerank_text: str
 
 
 @dataclass(slots=True)
@@ -34,3 +36,27 @@ class HybridCandidate:
     text_score: Optional[float]
     vector_score: Optional[float]
     rrf_score: float
+
+
+@dataclass(slots=True)
+class RerankedCandidate:
+    attack_id: str
+    name: str
+    vector_score: float
+    vector_rank: int
+    reranker_score: Optional[float]
+    reranked_rank: int
+
+
+@dataclass(slots=True)
+class RerankedRetrievalResult:
+    candidates: list[RerankedCandidate]
+    vector_candidates: list[VectorCandidate]
+    candidate_k: int
+    top_k: int
+    embedding_ms: float
+    vector_search_ms: float
+    reranking_ms: float
+    total_retrieval_ms: float
+    reranker_model: str
+    fallback_used: bool
