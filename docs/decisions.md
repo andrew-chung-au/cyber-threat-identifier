@@ -24,9 +24,10 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 | DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
 | DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
 | DEC-014 | External evaluation benchmark strategy           | Accepted          | 2026-07-30 |
-| DEC-015 | Default retrieval method for v1                  | Accepted          | 2026-07-31 |
+| DEC-015 | Default retrieval method for v1                  | Superseded        | 2026-07-31 |
 | DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
 | DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
+| DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
 
 ---
 
@@ -706,7 +707,7 @@ At this stage, answer-generation design and evaluation are still evolving, so th
 Introduce a structured answer-generation pipeline with a clear output contract:
 
 - Retrieval:
-  - Use vector retrieval (v1 default) to fetch top-k ATT&CK technique candidates for each incident narrative.
+  - Use vector retrieval as the initial answer-generation baseline to fetch top-k ATT&CK technique candidates for each incident narrative.
   - Record the retrieved ATT&CK IDs and any metadata needed for grounding.
 - Generation:
   - Use an LLM client (configured via environment) to generate a structured answer that includes:
@@ -739,3 +740,115 @@ Treat this pipeline and schema as an accepted baseline: it is suitable for early
 - The structured contract allows for systematic human review and scoring across dimensions such as candidate validity, retrieval grounding, narrative grounding, uncertainty handling, and analyst usefulness.
 - The pipeline enables separation of retrieval failures (missing or mis-ranked candidates) from generation failures (poor reasoning over available evidence).
 - Future work can iterate on prompts, model selection, and rubric design while preserving the same high-level output contract, or evolve the contract in new decision records when needed.
+
+---
+
+
+## DEC-018 — Default retrieval configuration with reranking
+
+
+**Status:** Accepted  
+**Date:** 2026-08-12  
+**Supersedes:** DEC-015 for the default v1 retrieval configuration
+
+
+### Context
+
+
+DEC-015 selected vector retrieval as the v1 default after comparing text, vector, and hybrid retrieval. At that time, hybrid retrieval produced only a marginal improvement over vector retrieval and did not justify the additional complexity.
+
+
+A local second-stage document reranking experiment has now been implemented and evaluated. The experiment uses:
+
+
+- First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`.
+- PostgreSQL with pgvector cosine-distance search over active Enterprise MITRE ATT&CK technique and sub-technique records.
+- Retrieval of the top 20 vector candidates.
+- A local CPU cross-encoder reranker, `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- Existing structured ATT&CK `embedding_text` as the reranker document text. This contains ATT&CK ID, technique name, tactics, platforms, and cleaned description.
+- Return of the top 10 reranked records for benchmark compatibility.
+
+
+The vector-only and vector-plus-reranking configurations were evaluated against the same current 226-case Expert-derived retrieval set.
+
+
+Results were:
+
+
+| Metric | Vector | Vector + cross-encoder reranking | Absolute change |
+|---|---:|---:|---:|
+| Recall@1 | 0.1098 | 0.1462 | +0.0364 |
+| Recall@3 | 0.1940 | 0.2526 | +0.0586 |
+| Recall@5 | 0.2710 | 0.3104 | +0.0394 |
+| Recall@10 | 0.3551 | 0.3866 | +0.0315 |
+| Hit@3 | 0.3540 | 0.4159 | +0.0619 |
+| Hit@10 | 0.5619 | 0.5973 | +0.0354 |
+| MRR | 0.3134 | 0.3578 | +0.0444 |
+
+
+The reranked configuration improved every reported retrieval metric.
+
+The final synced local CPU reranking benchmark measured:
+
+- Median total retrieval time: 1,254.79 ms.
+- P95 total retrieval time: 1,451.74 ms.
+- Median reranking time: 1,223.29 ms.
+- P95 reranking time: 1,414.23 ms.
+
+A second benchmark run after `uv lock` and `uv sync` reproduced the same retrieval-quality metrics, confirming that the selected reranking configuration remains stable under the final locked dependency state.
+
+Reranking is therefore the dominant source of retrieval latency in the evaluated pipeline.
+
+### Decision
+
+Use **vector retrieval plus local cross-encoder document reranking** as the selected default retrieval configuration for version 1.
+
+The default v1 flow is:
+
+```text
+Incident narrative
+  → Query embedding with all-MiniLM-L6-v2
+  → pgvector cosine-similarity retrieval of top 20 ATT&CK records
+  → Local CPU cross-encoder reranking with cross-encoder/ms-marco-MiniLM-L-6-v2
+  → Ranked ATT&CK candidates
+  → Structured answer generation baseline or future analyst-facing display
+```
+
+Use the following depths by default:
+
+- Retrieval evaluation: retrieve 20 vector candidates and return 10 reranked candidates, preserving comparison with Recall@10 and Hit@10.
+- Future analyst-facing UI and answer-generation integration: retrieve 20 vector candidates and return a smaller reranked top-k context, initially expected to be 5 candidates.
+- Current answer-generation baseline: continues to use vector retrieval until reranked retrieval is integrated and evaluated in that pipeline.
+
+Retain the following retrieval methods as implemented baselines and diagnostic modes:
+
+- Text-only retrieval.
+- Vector-only retrieval.
+- Hybrid text-plus-vector retrieval using Reciprocal Rank Fusion.
+- Vector retrieval plus local cross-encoder reranking.
+
+Keep vector-only retrieval available as a fallback option for future interface/runtime handling if the reranker model cannot load. The evaluation benchmark must fail rather than silently fall back to vector-only retrieval, so benchmark outputs cannot be misrepresented as reranked results.
+
+### Alternatives considered
+
+- Retain vector-only retrieval as the v1 default because it has lower latency and less implementation complexity.
+- Use hybrid text-plus-vector retrieval as the default because it was marginally stronger than vector-only retrieval in the earlier comparison.
+- Use a larger local reranker model.
+- Use a hosted reranking API.
+- Use an ONNX-optimised reranker implementation before selecting a default.
+- Defer reranking until after answer-generation evaluation is complete.
+
+
+### Consequences
+
+
+- The selected default improves all reported metrics over vector-only retrieval on the current Expert-derived evaluation set.
+- The strongest observed improvement is in ordering quality: MRR increased from 0.3134 to 0.3578, while Hit@3 increased from 0.3540 to 0.4159.
+- In the final synced local CPU benchmark run, the reranking stage produced 1,254.79 ms median total retrieval latency, 1,451.74 ms p95 total latency, 1,223.29 ms median reranking time, and 1,414.23 ms p95 reranking time. This is accepted for the initial analyst-assist workflow because retrieval quality improved consistently across all reported metrics.
+- The Streamlit interface should show progress while retrieval and reranking are running.
+- The interface should expose the retrieval method, candidate ranks, and returned ATT&CK evidence so that analysts can inspect the basis of the ranking.
+- The project now satisfies the implemented-and-evaluated document reranking best-practice requirement.
+- The current result is based on the existing 226-case Expert-derived evaluation set, which includes development and test-derived records and is not yet a frozen held-out benchmark.
+- This decision does not replace DEC-014. Future final external benchmark claims must still use curation rules frozen on the Expert development split before evaluation on the held-out Expert test split.
+- ONNX optimisation is deferred. It may be evaluated later as a deployment or performance optimisation, but it is not required to establish the current reranking result.
+- Future changes to candidate-pool depth, cross-encoder model, CPU/GPU execution, ONNX runtime, or fallback behaviour require a new benchmark comparison and a new decision record if they alter the selected default configuration.
