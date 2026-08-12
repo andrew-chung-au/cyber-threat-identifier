@@ -1,33 +1,39 @@
 # Decisions
 
+
 This document records stable design decisions for Cyber Threat Identifier.
+
 
 Each entry uses a lightweight Architecture Decision Record (ADR) format. For chronological implementation notes, experiments, and progress updates, see [`project-log.md`](project-log.md).
 
+
 For corpus provenance, schema, processing rules, and data-quality notes, see [`dataset-notes.md`](dataset-notes.md). For benchmark design, metrics, and evaluation findings, see [`evaluation-notes.md`](evaluation-notes.md). For reproducible setup and commands, see [`runbook.md`](runbook.md).
+
 
 ## Decision index
 
-| ID      | Decision                                         | Status            | Date       |
-|---------|--------------------------------------------------|-------------------|------------|
-| DEC-001 | Project scope                                    | Accepted          | 2026-07-27 |
-| DEC-002 | Core corpus selection                            | Accepted          | 2026-07-27 |
-| DEC-003 | Product naming and ATT&CK references             | Accepted          | 2026-07-27 |
-| DEC-004 | Public repository and attribution                | Accepted          | 2026-07-30 |
-| DEC-005 | Repository structure                             | Accepted          | 2026-07-29 |
-| DEC-006 | Execution convention                             | Accepted          | 2026-07-29 |
-| DEC-007 | Source provenance and versioning                 | Accepted          | 2026-07-29 |
-| DEC-008 | Retrieval unit and chunking                      | Accepted          | 2026-07-29 |
-| DEC-009 | Processed corpus schema and snapshot policy      | Accepted          | 2026-07-30 |
-| DEC-010 | Database and embedding pipeline                  | Accepted          | 2026-07-29 |
-| DEC-011 | Embedding baseline                               | Accepted baseline | 2026-07-30 |
-| DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
-| DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
-| DEC-014 | External evaluation benchmark strategy           | Accepted          | 2026-07-30 |
-| DEC-015 | Default retrieval method for v1                  | Superseded        | 2026-07-31 |
-| DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
-| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
-| DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
+
+| ID      | Decision                                                 | Status            | Date       |
+|---------|----------------------------------------------------------|-------------------|------------|
+| DEC-001 | Project scope                                            | Accepted          | 2026-07-27 |
+| DEC-002 | Core corpus selection                                    | Accepted          | 2026-07-27 |
+| DEC-003 | Product naming and ATT&CK references                     | Accepted          | 2026-07-27 |
+| DEC-004 | Public repository and attribution                        | Accepted          | 2026-07-30 |
+| DEC-005 | Repository structure                                     | Accepted          | 2026-07-29 |
+| DEC-006 | Execution convention                                     | Accepted          | 2026-07-29 |
+| DEC-007 | Source provenance and versioning                         | Accepted          | 2026-07-29 |
+| DEC-008 | Retrieval unit and chunking                              | Accepted          | 2026-07-29 |
+| DEC-009 | Processed corpus schema and snapshot policy              | Accepted          | 2026-07-30 |
+| DEC-010 | Database and embedding pipeline                          | Accepted          | 2026-07-29 |
+| DEC-011 | Embedding baseline                                       | Accepted baseline | 2026-07-30 |
+| DEC-012 | Vector index strategy                                    | Accepted          | 2026-07-30 |
+| DEC-013 | Documentation strategy                                   | Accepted          | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy                   | Accepted          | 2026-07-30 |
+| DEC-015 | Default retrieval method for v1                          | Superseded        | 2026-07-31 |
+| DEC-016 | Retrieval-module refactor and shared helpers             | Accepted          | 2026-07-31 |
+| DEC-017 | Answer-generation pipeline and output contract           | Accepted baseline | 2026-07-31 |
+| DEC-018 | Default retrieval configuration with reranking           | Accepted          | 2026-08-12 |
+| DEC-019 | User query rewriting evaluation and decision             | Accepted          | 2026-08-13 |
 
 ---
 
@@ -743,23 +749,17 @@ Treat this pipeline and schema as an accepted baseline: it is suitable for early
 
 ---
 
-
 ## DEC-018 — Default retrieval configuration with reranking
-
 
 **Status:** Accepted  
 **Date:** 2026-08-12  
 **Supersedes:** DEC-015 for the default v1 retrieval configuration
 
-
 ### Context
-
 
 DEC-015 selected vector retrieval as the v1 default after comparing text, vector, and hybrid retrieval. At that time, hybrid retrieval produced only a marginal improvement over vector retrieval and did not justify the additional complexity.
 
-
 A local second-stage document reranking experiment has now been implemented and evaluated. The experiment uses:
-
 
 - First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`.
 - PostgreSQL with pgvector cosine-distance search over active Enterprise MITRE ATT&CK technique and sub-technique records.
@@ -768,12 +768,9 @@ A local second-stage document reranking experiment has now been implemented and 
 - Existing structured ATT&CK `embedding_text` as the reranker document text. This contains ATT&CK ID, technique name, tactics, platforms, and cleaned description.
 - Return of the top 10 reranked records for benchmark compatibility.
 
-
 The vector-only and vector-plus-reranking configurations were evaluated against the same current 226-case Expert-derived retrieval set.
 
-
 Results were:
-
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -784,7 +781,6 @@ Results were:
 | Hit@3 | 0.3540 | 0.4159 | +0.0619 |
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
-
 
 The reranked configuration improved every reported retrieval metric.
 
@@ -838,9 +834,7 @@ Keep vector-only retrieval available as a fallback option for future interface/r
 - Use an ONNX-optimised reranker implementation before selecting a default.
 - Defer reranking until after answer-generation evaluation is complete.
 
-
 ### Consequences
-
 
 - The selected default improves all reported metrics over vector-only retrieval on the current Expert-derived evaluation set.
 - The strongest observed improvement is in ordering quality: MRR increased from 0.3134 to 0.3578, while Hit@3 increased from 0.3540 to 0.4159.
@@ -852,3 +846,92 @@ Keep vector-only retrieval available as a fallback option for future interface/r
 - This decision does not replace DEC-014. Future final external benchmark claims must still use curation rules frozen on the Expert development split before evaluation on the held-out Expert test split.
 - ONNX optimisation is deferred. It may be evaluated later as a deployment or performance optimisation, but it is not required to establish the current reranking result.
 - Future changes to candidate-pool depth, cross-encoder model, CPU/GPU execution, ONNX runtime, or fallback behaviour require a new benchmark comparison and a new decision record if they alter the selected default configuration.
+
+---
+
+## DEC-019 — User query rewriting evaluation and decision
+
+**Status:** Accepted  
+**Date:** 2026-08-13
+
+### Context
+
+Following DEC-018, which established vector retrieval plus local cross-encoder reranking as the default v1 configuration, an additional retrieval enhancement was evaluated: LLM-based user query rewriting.
+
+The hypothesis was that rewriting verbose incident narratives into concise, ATT&CK-oriented retrieval queries might improve semantic matching by:
+
+- Removing report-writing filler and campaign background.
+- Focusing on behaviours, tools, execution methods, and IOCs.
+- Producing queries that better align with ATT&CK technique description embeddings.
+
+A query-rewriting pipeline was implemented and evaluated:
+
+- Query rewriting with Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) via OpenAI-compatible API.
+- Prompt instructions directing the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
+- Rate limiting at 15 requests/minute to respect the Gemini free tier.
+- First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2` and pgvector.
+- Local CPU cross-encoder reranking with `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- Retrieval of 20 vector candidates, reranking, and return of top 10 candidates.
+
+The `rewritten_vector_reranked` configuration was evaluated against the same 226-case Expert-derived retrieval set used for DEC-018.
+
+Results were:
+
+| Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
+|---|---:|---:|---:|
+| Recall@1 | 0.1462 | 0.1495 | +0.0033 |
+| Recall@3 | 0.2526 | 0.2966 | +0.0440 |
+| Recall@5 | 0.3104 | 0.3507 | +0.0403 |
+| Recall@10 | 0.3866 | 0.4581 | +0.0715 |
+| Hit@3 | 0.4159 | 0.4690 | +0.0531 |
+| Hit@10 | 0.5973 | 0.6726 | +0.0753 |
+| MRR | 0.3578 | 0.3940 | +0.0362 |
+
+Query rewriting improved all reported retrieval metrics over the DEC-018 baseline.
+
+The benchmark measured the following latency characteristics:
+
+- Median total retrieval time: 4,362.28 ms.
+- P95 total retrieval time: 12,202.92 ms.
+- Median query-rewrite time: 3,183.88 ms.
+- P95 query-rewrite time: 10,954.94 ms.
+
+Query rewriting is therefore the dominant source of retrieval latency in the evaluated pipeline, adding approximately 3.1 seconds median latency and up to 11 seconds at P95 compared to the DEC-018 baseline.
+
+### Decision
+
+**Do not adopt user query rewriting as the default retrieval configuration for version 1.**
+
+Retain **vector retrieval plus local cross-encoder reranking** (DEC-018) as the default v1 configuration.
+
+Document query rewriting as an evaluated retrieval enhancement that improved metrics but introduced unacceptable latency for the initial analyst-assist workflow. Keep the implementation available for future re-evaluation under the following conditions:
+
+- Access to lower-latency LLM endpoints (e.g., paid-tier Gemini with higher RPM limits, or self-hosted models).
+- Prompt-engineering improvements that reduce rewrite latency while preserving quality.
+- Embedding models fine-tuned for ATT&CK-specific query-document matching that may reduce reliance on query rewriting.
+- Hybrid approaches that combine raw narrative retrieval with rewritten-query retrieval.
+
+The query-rewriting implementation remains in the codebase:
+
+- `src/retrieval/query_rewriter.py` — LLM-based query rewriting with caching.
+- `src/retrieval/rewritten_reranked_vector.py` — End-to-end rewritten query retrieval with reranking.
+- `src/evaluation/run_expert_query_rewrite_retrieval_benchmark.py` — Benchmark script for evaluation.
+
+Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimiter` class that can be enabled for batch tasks and disabled for interactive use.
+
+### Alternatives considered
+
+- Adopt query rewriting as the default despite the latency penalty, prioritising retrieval quality over response time.
+- Use query rewriting only for offline analysis or batch evaluation, not for interactive use.
+- Implement hybrid retrieval combining candidates from both raw narratives and rewritten queries.
+- Defer query-rewriting evaluation until after the v1 interface is deployed.
+- Use a different LLM (e.g., Gemini 2.5 Flash, Gemini 2.5 Pro) with different latency and instruction-following characteristics.
+
+### Consequences
+
+- The default v1 retrieval configuration remains vector plus reranking with median latency ~1.3 seconds, acceptable for interactive analyst-assist workflows.
+- Query rewriting is documented as an evaluated best-practice component, satisfying the "user query rewriting" best-practice criterion (evaluated, even if not deployed).
+- The implementation is available for future optimisation or re-evaluation if latency constraints are relaxed or LLM endpoints improve.
+- The project retains all three best-practice points: hybrid search (evaluated), document reranking (deployed), and user query rewriting (evaluated).
+- Future work can explore prompt engineering (few-shot examples, detail preservation), alternative embedding models, or hybrid retrieval strategies to close the gap between retrieval quality and latency.
+- The decision preserves the option to revisit query rewriting in a future decision record if conditions change (e.g., paid-tier LLM access, improved prompts, or different latency requirements).

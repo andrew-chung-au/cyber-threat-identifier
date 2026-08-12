@@ -2,17 +2,69 @@ from __future__ import annotations
 
 import os
 import random
+import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
 
-
 load_dotenv()
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+
+@dataclass(slots=True)
+class RateLimiter:
+    """
+    Simple in-memory rate limiter using a fixed-window approach.
+
+    Enforces at most `max_calls` per `window_seconds` across all callers
+    that share this instance. Thread-safe for multi-threaded use.
+    """
+
+    max_calls: int
+    window_seconds: float
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _calls: list[float] = field(default_factory=list, repr=False)
+
+    def acquire(self) -> float:
+        """
+        Block until a call slot is available, then record the call.
+
+        Returns the time spent waiting (in seconds).
+        """
+        with self._lock:
+            now = time.perf_counter()
+            window_start = now - self.window_seconds
+
+            # Drop calls outside the current window
+            self._calls = [t for t in self._calls if t > window_start]
+
+            if len(self._calls) < self.max_calls:
+                # Slot available immediately
+                self._calls.append(now)
+                return 0.0
+
+            # Need to wait until the oldest call exits the window
+            oldest = self._calls[0]
+            wait_until = oldest + self.window_seconds
+            wait_seconds = wait_until - now
+
+        # Sleep outside the lock so other threads can proceed
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+
+        # Re-acquire and record after waiting
+        with self._lock:
+            now = time.perf_counter()
+            window_start = now - self.window_seconds
+            self._calls = [t for t in self._calls if t > window_start]
+            self._calls.append(now)
+
+        return max(0.0, wait_seconds)
 
 
 def get_default_model() -> str:
@@ -91,9 +143,16 @@ def generate_structured_answer(
     max_wait: float = 60.0,
     jitter_ratio: float = 0.25,
     verbose: bool = True,
+    rate_limiter: RateLimiter | None = None,
 ) -> tuple[SchemaT, Any]:
     resolved_client = client or get_client()
     resolved_model = model or get_default_model()
+
+    # Optional rate limiting (primarily for batch tasks)
+    if rate_limiter is not None:
+        wait_seconds = rate_limiter.acquire()
+        if verbose and wait_seconds > 0:
+            print(f"[RATE LIMIT] Waited {wait_seconds:.2f}s before LLM call")
 
     last_error: Exception | None = None
 
@@ -146,9 +205,16 @@ def generate_text_answer(
     max_wait: float = 60.0,
     jitter_ratio: float = 0.25,
     verbose: bool = True,
+    rate_limiter: RateLimiter | None = None,
 ) -> tuple[str, Any]:
     resolved_client = client or get_client()
     resolved_model = model or get_default_model()
+
+    # Optional rate limiting (primarily for batch tasks)
+    if rate_limiter is not None:
+        wait_seconds = rate_limiter.acquire()
+        if verbose and wait_seconds > 0:
+            print(f"[RATE LIMIT] Waited {wait_seconds:.2f}s before LLM call")
 
     last_error: Exception | None = None
 

@@ -10,8 +10,9 @@ It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and 
 > **Project status (v1):**
 > - The ATT&CK ingestion, PostgreSQL + pgvector database, text, vector, hybrid, and local document-reranking retrieval paths are implemented.
 > - Vector retrieval plus local cross-encoder reranking is the selected v1 retrieval configuration based on the current 226-case Expert-derived benchmark.
+> - Query rewriting with LLM (Gemini 3.1 Flash Lite) was evaluated and improved retrieval metrics but introduced unacceptable latency for interactive use; it is retained as an evaluated best-practice component.
 > - The answer-generation baseline is implemented and currently uses vector retrieval to produce structured, retrieval-grounded outputs; reranked-retrieval integration, rubric-scored answer evaluation, and model comparison remain in progress.
-> - An analyst-facing Streamlit UI, monitoring dashboard, query rewriting, and frozen held-out external benchmark are planned next.
+> - An analyst-facing Streamlit UI, monitoring dashboard, and frozen held-out external benchmark are planned next.
 
 
 ---
@@ -56,6 +57,7 @@ Version 1 focuses on a narrow incident-to-technique task: given an incident narr
 - Technique IDs, names, tactics, platforms, descriptions, URLs, and timestamps.
 - Reproducible ATT&CK download, extraction, PostgreSQL loading, and embedding stages.
 - Text, vector, hybrid, and vector-plus-reranking retrieval evaluation.
+- Query-rewriting retrieval evaluation with LLM (Gemini 3.1 Flash Lite).
 - A local CPU cross-encoder reranker over vector-retrieved ATT&CK candidates.
 - An external Expert-derived evaluation source for retrieval and future answer evaluation.
 - Initial structured candidate-answer generation grounded in retrieved ATT&CK records.
@@ -134,7 +136,7 @@ data/eval/expert_retrieval_cases.csv
 ```
 
 
-It compares text-only retrieval, vector retrieval, hybrid retrieval using Reciprocal Rank Fusion, and vector retrieval plus local document reranking.
+It compares text-only retrieval, vector retrieval, hybrid retrieval using Reciprocal Rank Fusion, vector retrieval plus local document reranking, and query rewriting plus vector plus reranking.
 
 
 | Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
@@ -143,6 +145,7 @@ It compares text-only retrieval, vector retrieval, hybrid retrieval using Recipr
 | Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
 | Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
 | Vector + reranking | 0.1462 | 0.2526 | 0.3104 | 0.3866 | 0.4159 | 0.5973 | 0.3578 |
+| Query rewrite + vector + rerank | 0.1495 | 0.2966 | 0.3507 | 0.4581 | 0.4690 | 0.6726 | 0.3940 |
 
 
 The selected v1 configuration is:
@@ -160,6 +163,9 @@ Ranked ATT&CK candidates
 
 
 Vector-plus-reranking improved every reported retrieval metric over vector-only retrieval. MRR increased from 0.3134 to 0.3578, and Hit@3 increased from 0.3540 to 0.4159.
+
+
+Query rewriting further improved all metrics (MRR: 0.3940, Hit@3: 0.4690) but introduced substantial latency: median total retrieval time was 4,362 ms (vs 1,255 ms for vector + rerank), with median query-rewrite time of 3,184 ms. This latency is unacceptable for interactive analyst-assist workflows.
 
 
 The quality improvement has a latency cost: median end-to-end retrieval time was 1,254.79 ms, p95 end-to-end latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms on the current local CPU benchmark. This trade-off is accepted for the v1 analyst-assist workflow.
@@ -191,6 +197,7 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 - Vector retrieval baseline.
 - Hybrid retrieval baseline using Reciprocal Rank Fusion.
 - Local document reranking using `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- Query rewriting evaluation with Gemini 3.1 Flash Lite (evaluated, not deployed).
 - Retrieval benchmark scripts and per-case evaluation reports.
 - External Expert-label compatibility validation.
 - Structured answer-generation baseline with primary candidate, alternatives, supporting IDs, uncertainty, grounding note, and review-required output.
@@ -199,7 +206,6 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 ### Planned
 
 
-- Evaluate constrained user query rewriting against the selected reranked retrieval baseline.
 - Compare answer-generation prompts and LLM models using fixed retrieval context.
 - Finalise a human-readable answer-evaluation rubric and score a review subset.
 - Freeze curation rules using `expert_dev.tsv`.
@@ -231,9 +237,12 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 git clone <repository-url>
 cd cyber-threat-identifier
 
+
 uv sync
 
+
 cp .env.example .env
+
 
 docker compose up -d
 docker compose ps
@@ -249,11 +258,15 @@ Wait until PostgreSQL reports as healthy before continuing.
 ```bash
 uv run python -m src.ingestion.download_attack_data
 
+
 uv run python -m src.ingestion.extract_attack_techniques
+
 
 uv run python -m src.database.db_init
 
+
 uv run python -m src.database.db_load_techniques
+
 
 uv run python -m src.database.db_build_embeddings
 ```
@@ -286,6 +299,7 @@ Verify that the local reranker can load:
 ```bash
 uv run python -c "
 from src.retrieval.reranker import get_reranker_model
+
 
 get_reranker_model()
 print('Reranker loaded successfully')
@@ -340,6 +354,8 @@ cyber-threat-identifier/
 │   │   ├── hybrid.py
 │   │   ├── reranker.py
 │   │   └── reranked_vector.py
+│   │   └── query_rewriter.py
+│   │   └── rewritten_reranked_vector.py
 │   ├── generation/
 │   │   ├── schemas.py
 │   │   ├── prompts.py
@@ -351,6 +367,7 @@ cyber-threat-identifier/
 │   │   ├── run_expert_vector_retrieval_benchmark.py
 │   │   ├── run_expert_hybrid_retrieval_benchmark.py
 │   │   ├── run_expert_reranked_vector_retrieval_benchmark.py
+│   │   ├── run_expert_query_rewrite_retrieval_benchmark.py
 │   │   ├── run_expert_answer_generation.py
 │   │   ├── run_expert_answer_judge.py
 │   │   └── validate_external_expert_labels.py
@@ -399,6 +416,7 @@ cyber-threat-identifier/
 - The local reranker can improve ordering only within its first-stage vector candidate pool; it cannot recover techniques absent from the vector top 20.
 - The selected reranker is a compact general-domain model, not a cyber-security-specific reranker.
 - Local CPU reranking adds approximately 1.2 seconds median latency in the current benchmark.
+- Query rewriting improves retrieval quality but adds ~3.1 seconds median latency; it is evaluated but not deployed for interactive use.
 - The current answer-generation pipeline is a baseline; prompt, model, abstention behaviour, and rubric-scored quality are still under evaluation.
 - The external Expert dataset is multi-label and does not provide a verified single primary technique.
 - The current 226-case benchmark is not a frozen held-out benchmark.
@@ -414,7 +432,7 @@ cyber-threat-identifier/
 Cyber Threat Identifier is an independent project. It is not affiliated with, sponsored by, or endorsed by The MITRE Corporation.
 
 
-MITRE ATT&CK® is used as the project’s source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
+MITRE ATT&CK® is used as the project's source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
 
 
 The repository contains derived ATT&CK content. Any distributed corpus snapshot or derived artefact must retain applicable MITRE copyright, licence, and attribution wording.
