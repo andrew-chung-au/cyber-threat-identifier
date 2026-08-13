@@ -70,22 +70,17 @@ The implemented retrieval methods are:
 - **Hybrid** — Reciprocal Rank Fusion over text and vector ranked candidate lists.
 - **Vector + reranking** — top 20 vector candidates reordered by a local cross-encoder.
 - **Query rewrite + vector + reranking** — LLM-rewritten queries followed by vector retrieval and reranking.
-- **Query rewrite + vector + reranking** — LLM-rewritten queries followed by vector retrieval and reranking.
-
 
 ### Implemented benchmark commands
 
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
 
-
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
-
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
-
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
@@ -183,15 +178,11 @@ CPU reranking is the dominant contributor to end-to-end retrieval latency.
 
 Vector-only latency was not separately instrumented in the current vector benchmark. The reported reranking timings therefore establish the latency of the selected two-stage configuration, but do not yet provide a complete like-for-like vector-only latency comparison.
 
-
 ### Query rewriting experiment
-
 
 A query-rewriting configuration was implemented and benchmarked on 2026-08-13.
 
-
 The pipeline is:
-
 
 ```text
 Incident narrative
@@ -202,9 +193,7 @@ Incident narrative
   → Return top 10 reranked candidates for benchmark evaluation
 ```
 
-
 Configuration:
-
 
 | Setting | Value |
 |---|---|
@@ -220,12 +209,9 @@ Configuration:
 | Benchmark output depth | Top 10 |
 | Benchmark cases | 226 Expert-derived cases |
 
-
 The query rewriter receives the full incident narrative and returns a concise ATT&CK-oriented retrieval query. Prompt instructions direct the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
 
-
 ### Vector + rerank versus query rewrite + vector + rerank results
-
 
 | Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
 |---|---:|---:|---:|
@@ -237,23 +223,17 @@ The query rewriter receives the full incident narrative and returns a concise AT
 | Hit@10 | 0.5973 | 0.6726 | +0.0753 |
 | MRR | 0.3578 | 0.3940 | +0.0362 |
 
-
 Query rewriting improves all reported ranking metrics over the DEC-018 vector-plus-reranking baseline.
 
-
 The improvements are most pronounced at deeper cutoffs:
-
 
 - Recall@10 increased from 0.3866 to 0.4581.
 - Hit@10 increased from 0.5973 to 0.6726.
 - MRR increased from 0.3578 to 0.3940.
 
-
 These results indicate that query rewriting helps retrieve additional relevant candidates that were absent from the top 20 vector pool, while also improving the ordering of candidates within the reranked set.
 
-
 ### Query rewriting latency
-
 
 The query-rewrite benchmark records query rewriting, embedding, vector search, reranking, and total retrieval timing.
 
@@ -265,12 +245,9 @@ The query-rewrite benchmark records query rewriting, embedding, vector search, r
 | Median query-rewrite time | 3,183.88 ms |
 | P95 query-rewrite time | 10,954.94 ms |
 
-
 Query rewriting is the dominant contributor to end-to-end retrieval latency, adding approximately 3.1 seconds median latency and up to 11 seconds at P95 compared to the DEC-018 baseline.
 
-
 Rate limiting at 15 requests/minute worked as expected, with 226 queries completing in approximately 15 minutes of wall-clock time.
-
 
 ### Retrieval decision
 
@@ -292,19 +269,13 @@ The current 226-case file contains development- and test-derived cases. It shoul
 
 The reranker cannot recover techniques that are absent from the first-stage top 20 vector candidates. It improves ordering only within the vector candidate pool.
 
-
 Query rewriting can recover candidates outside the original vector pool by changing the query embedding, but at significant latency cost.
-
 
 The selected reranker is a compact general-domain MS MARCO cross-encoder. It is an evaluated baseline, not evidence that this is the optimal model for ATT&CK retrieval.
 
 The query-rewriting model (Gemini 3.1 Flash Lite) is an evaluated baseline; alternative models or prompts may yield different quality-latency trade-offs.
 
-The query-rewriting model (Gemini 3.1 Flash Lite) is an evaluated baseline; alternative models or prompts may yield different quality-latency trade-offs.
-
-
 ONNX optimisation, GPU execution, reranker-model comparison, candidate-pool-depth tuning, and query-rewrite prompt optimisation are deferred. They are future performance experiments, not required for the current assessed implementation.
-
 
 ---
 

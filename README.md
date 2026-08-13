@@ -136,6 +136,7 @@ Ranked ATT&CK candidates
 
 Vector-plus-reranking improved every reported retrieval metric over vector-only retrieval. MRR increased from 0.3134 to 0.3578, and Hit@3 increased from 0.3540 to 0.4159.
 
+Query rewriting further improved all metrics (MRR: 0.3940, Hit@3: 0.4690) but introduced substantial latency: median total retrieval time was 4,362 ms (vs 1,255 ms for vector + rerank), with median query-rewrite time of 3,184 ms. This latency is unacceptable for interactive analyst-assist workflows.
 
 The quality improvement has a latency cost: median end-to-end retrieval time was 1,254.79 ms, p95 end-to-end latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms on the current local CPU benchmark. This trade-off is accepted for the v1 analyst-assist workflow.
 
@@ -174,9 +175,9 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 
 ### Planned
 
-
-- Evaluate constrained user query rewriting against the selected reranked retrieval baseline.
-- Compare answer-generation prompts and LLM models using fixed retrieval context.
+- Compare answer-generation prompts and LLM models using fixed retrieval context, using the pairwise LLM-as-judge pipeline as the primary automated comparison tool.
+- Perform targeted manual review of a sampled subset of judge-disagreement cases to validate judge preferences and identify failure modes.
+- Decide on a default answer-generation model (e.g. 3.1 vs 3.5) based on automated evaluation plus manual review, and record the choice in a dedicated decision record.
 - Finalise a human-readable answer-evaluation rubric and score a review subset.
 - Freeze curation rules using `expert_dev.tsv`.
 - Run final held-out external evaluation against compatible curated `expert_test.tsv` cases.
@@ -201,12 +202,9 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 git clone <repository-url>
 cd cyber-threat-identifier
 
-
 uv sync
 
-
 cp .env.example .env
-
 
 docker compose up -d
 docker compose ps
@@ -219,15 +217,11 @@ Wait until PostgreSQL reports as healthy before continuing.
 ```bash
 uv run python -m src.ingestion.download_attack_data
 
-
 uv run python -m src.ingestion.extract_attack_techniques
-
 
 uv run python -m src.database.db_init
 
-
 uv run python -m src.database.db_load_techniques
-
 
 uv run python -m src.database.db_build_embeddings
 ```
@@ -253,7 +247,6 @@ Verify that the local reranker can load:
 ```bash
 uv run python -c "
 from src.retrieval.reranker import get_reranker_model
-
 
 get_reranker_model()
 print('Reranker loaded successfully')
@@ -379,8 +372,7 @@ cyber-threat-identifier/
 
 Cyber Threat Identifier is an independent project. It is not affiliated with, sponsored by, or endorsed by The MITRE Corporation.
 
-MITRE ATT&CK® is used as the project's source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
-
+MITRE ATT&CK® is used as the project’s source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
 
 The repository contains derived ATT&CK content. Any distributed corpus snapshot or derived artefact must retain applicable MITRE copyright, licence, and attribution wording.
 

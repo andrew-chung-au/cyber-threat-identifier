@@ -1,32 +1,25 @@
 # Dataset notes
 
-
 This document records the scope, provenance, structure, processing rules, data artefacts, quality checks, and limitations of the Cyber Threat Identifier corpus and external evaluation‑data candidates.
 
 It is the working reference for corpus design and source management.
-
 
 For stable architectural choices, see [`decisions.md`](decisions.md).  
 For chronological implementation history, see [`project-log.md`](project-log.md).  
 For reproducible setup and pipeline commands, see [`runbook.md`](runbook.md).  
 For retrieval experiments, benchmark design, and metrics, see [`evaluation-notes.md`](evaluation-notes.md).
 
-
 ---
-
 
 ## Corpus summary
 
-
 ### Initial corpus
-
 
 Version 1 uses active Enterprise MITRE ATT&CK technique and sub‑technique records extracted from the official ATT&CK STIX 2.1 Enterprise bundle.
 
 The initial corpus contains one retrieval record for each retained technique or sub‑technique.
 
 ### Intended use
-
 
 The corpus supports an incident‑to‑technique retrieval task:
 
@@ -40,16 +33,13 @@ Technique metadata and source-grounded evidence
 Analyst review
 ```
 
-
 The corpus supports analyst investigation and technique identification. It is not intended to establish attribution, determine incident severity, prescribe incident‑response actions, or guarantee complete coverage of adversary behaviour.
 
 The corpus supports retrieval and answer‑generation experiments, but answer‑generation behaviour, prompts, and scoring are documented in `evaluation-notes.md` and `decisions.md`, not here.
 
 ### Retrieval unit
 
-
 The version 1 retrieval unit is:
-
 
 ```text
 one active ATT&CK technique or sub-technique
@@ -65,27 +55,21 @@ one embedding vector
 one retrieval result
 ```
 
-
 Document‑style chunking is not used for the initial technique corpus.
 
 The rationale for this retrieval‑unit choice is recorded in DEC‑008. Vector‑index strategy, including optional HNSW use, is recorded in DEC‑012.
 
 ---
 
-
 ### Reranking use
 
-
 The retrieval unit remains unchanged when document reranking is enabled.
-
 
 For the selected v1 retrieval configuration, the system first retrieves a larger candidate pool of complete ATT&CK technique or sub‑technique records using vector search. It then reranks those already retrieved records using a local cross‑encoder.
 
 The reranker receives the existing structured `embedding_text` field for each candidate. It does not create new document chunks, modify ATT&CK source content, or add a second corpus representation.
 
-
 The current selected reranking flow is:
-
 
 ```text
 Incident narrative
@@ -99,43 +83,32 @@ Reranked ATT&CK candidates
 Top 10 for retrieval evaluation / smaller top-k planned for future answer-generation integration and analyst UI
 ```
 
-Reranking configuration, benchmark results, latency, and default-retrieval selection are documented in [`evaluation-notes.md`](evaluation-notes.md) and DEC-018 in [`decisions.md`](decisions.md).
+Reranking configuration, benchmark results, latency, and default‑retrieval selection are documented in [`evaluation-notes.md`](evaluation-notes.md) and DEC‑018 in [`decisions.md`](decisions.md).
 
 ---
 
-
 ### Query rewriting
-
 
 Query rewriting is an evaluated retrieval enhancement that does not modify the corpus.
 
-
 In the evaluated configuration, an LLM (Gemini 3.1 Flash Lite) rewrites the incident narrative into a concise ATT&CK-oriented retrieval query. The rewritten query is then embedded and used for vector retrieval, followed by cross-encoder reranking.
 
-
 The query rewriter:
-
 
 - Receives the full incident narrative.
 - Returns a concise retrieval query preserving only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
 - Does not infer or add techniques, tools, or behaviours not present in the original narrative.
 - Does not modify the stored ATT&CK corpus or database records.
 
-
 Query rewriting improved retrieval metrics but introduced unacceptable latency for interactive use. It is documented as an evaluated best-practice component (DEC-019) and retained for future re-evaluation.
-
 
 Query-rewriting configuration, benchmark results, latency, and decision are documented in [`evaluation-notes.md`](evaluation-notes.md) and DEC-019 in [`decisions.md`](decisions.md).
 
-
 ---
-
 
 ## Corpus boundaries
 
-
 ### Included in version 1
-
 
 - Enterprise ATT&CK STIX 2.1 `attack-pattern` objects
 - Active techniques
@@ -149,9 +122,7 @@ Query-rewriting configuration, benchmark results, latency, and decision are docu
 - Cleaned descriptions for retrieval preparation
 - Raw descriptions for evidence display and inspection
 
-
 ### Excluded in version 1
-
 
 - Revoked ATT&CK objects
 - Deprecated ATT&CK objects
@@ -183,9 +154,7 @@ Query-rewriting configuration, benchmark results, latency, and decision are docu
 
 ---
 
-
 ## Source inventory
-
 
 ### Core source
 
@@ -221,7 +190,6 @@ Query-rewriting configuration, benchmark results, latency, and decision are docu
 
 ### Source coverage
 
-
 The Enterprise STIX bundle contains multiple object types. Version 1 retains only active `attack-pattern` objects representing techniques and sub‑techniques.
 
 The source provides the initial fields needed for evidence‑oriented retrieval:
@@ -237,26 +205,19 @@ The source provides the initial fields needed for evidence‑oriented retrieval:
 - Source modification timestamp
 - Revoked and deprecated status fields
 
-
 ---
-
 
 ## Provenance and versioning
 
-
 ### ATT&CK download provenance
 
-
 Each ATT&CK source download is recorded in:
-
 
 ```text
 data/source_manifest.csv
 ```
 
-
 The manifest records:
-
 
 - `downloaded_at_utc`
 - `source_name`
@@ -267,23 +228,18 @@ The manifest records:
 - `sha256`
 - `notes`
 
-
 This creates an acquisition trail between the official source bundle and the derived processed corpus.
-
 
 ### Source references
 
-The downloader supports two source-reference modes:
+The downloader supports two source‑reference modes:
 
-
-| Mode                        | Purpose                                                       | Appropriate use                                 |
-|-----------------------------|---------------------------------------------------------------|-------------------------------------------------|
-| Default repository reference| Refresh the corpus against the current upstream source state | Development and current‑data inspection          |
-| Fixed release tag or commit | Rebuild a stable corpus version                                | Retrieval experiments, reported metrics, and reproducible portfolio results |
-
+| Mode                        | Purpose                                       | Appropriate use                               |
+|-----------------------------|-----------------------------------------------|-----------------------------------------------|
+| Default repository reference| Refresh the corpus against the current upstream source state | Development and current‑data inspection       |
+| Fixed release tag or commit | Rebuild a stable corpus version               | Retrieval experiments, reported metrics, and reproducible portfolio results |
 
 A formal comparable evaluation result must identify:
-
 
 - The ATT&CK source reference, release tag, or commit
 - Relevant source checksum from the manifest
@@ -292,20 +248,15 @@ A formal comparable evaluation result must identify:
 - Retrieval configuration
 - Benchmark version or upstream dataset revision
 
-
 ### External dataset provenance
 
-
 The external Expert dataset is inspected from a local Git clone. Record the exact upstream revision before using it in development or final evaluation:
-
 
 ```bash
 git -C data/external_inspection/mitre-ttp-mapping rev-parse HEAD
 ```
 
-
 Any future curated benchmark metadata must preserve:
-
 
 - Upstream repository URL
 - Upstream Git commit
@@ -316,32 +267,23 @@ Any future curated benchmark metadata must preserve:
 - Local pinned ATT&CK release
 - Inclusion or exclusion reason
 
-
 ### Authoritative source
-
 
 The official Enterprise ATT&CK STIX bundle is the authoritative source for the retrieval corpus.
 
-
 `data/processed/techniques.jsonl` is a derived project artefact. It is retained as an inspectable corpus snapshot, not as a replacement for the upstream STIX source.
-
 
 The Security‑TTP‑Mapping Expert subset is an external evaluation‑data candidate, not a retrieval‑corpus source.
 
 ---
 
-
 ## Repository artefacts
-
 
 The project uses a hybrid artefact policy: important derived data is committed for inspection, while reproducible upstream downloads remain local.
 
-
 ### Committed artefacts
 
-
 The following artefacts should be version controlled:
-
 
 ```text
 data/source_manifest.csv
@@ -349,9 +291,7 @@ data/processed/techniques.jsonl
 data/evaluation_reports/expert_label_compatibility.csv
 ```
 
-
 Reasons:
-
 
 - `techniques.jsonl` lets reviewers inspect the real retrieval corpus without setting up PostgreSQL or downloading STIX data.
 - `source_manifest.csv` preserves ATT&CK source provenance and checksums.
@@ -359,9 +299,7 @@ Reasons:
 
 ### Ignored artefacts
 
-
 The following upstream files should not be committed:
-
 
 ```text
 data/raw/attack/attack-stix-index.json
@@ -369,23 +307,17 @@ data/raw/attack/enterprise-attack.json
 data/external_inspection/
 ```
 
-
 Raw ATT&CK files are regenerated by the downloader from the recorded source reference.
-
 
 `data/external_inspection/` contains cloned external source repositories downloaded for feasibility inspection. It may contain third‑party threat‑report text and must remain ignored unless a separate provenance and redistribution decision changes this policy.
 
 The repository should also exclude local runtime state, including `.env`, virtual environments, Python caches, and Docker database volumes.
 
-
 ### Future benchmark artefacts
-
 
 Do not commit a final external benchmark containing copied `text1` narratives until the redistribution and provenance position is explicitly resolved.
 
-
 Until then, a public evaluation artefact may include:
-
 
 - Upstream repository and revision
 - Upstream split and row index
@@ -397,14 +329,11 @@ Until then, a public evaluation artefact may include:
 - Human‑review scores
 - Failure categories
 
-
 Internal answer‑generation evaluation artefacts (for example, JSONL or CSV files containing narratives and generated answers) should also remain uncommitted until redistribution and provenance for any embedded external threat‑report text is resolved. Only aggregate statistics, label‑compatible selection metadata, and failure categories should be committed.
 
 ### Corpus refresh policy
 
-
 When intentionally refreshing the ATT&CK corpus:
-
 
 1. Download the selected upstream source reference.
 2. Regenerate `data/processed/techniques.jsonl`.
@@ -415,12 +344,9 @@ When intentionally refreshing the ATT&CK corpus:
 
 Operational commands for this process are maintained in [`runbook.md`](runbook.md).
 
-
 ---
 
-
 ## Extraction rules
-
 
 ### Input and output
 
@@ -432,9 +358,7 @@ Operational commands for this process are maintained in [`runbook.md`](runbook.m
 
 ### Object selection
 
-
 The extractor retains a record only when all of the following are true:
-
 
 - The object type is STIX `attack-pattern`
 - The object is not revoked
@@ -447,21 +371,16 @@ The extractor retains a record only when all of the following are true:
 
 Expected ATT&CK ID patterns:
 
-
 ```text
 Technique:     T####
 Sub-technique: T####.###
 ```
 
-
 ### Duplicate handling
-
 
 If multiple valid objects resolve to the same ATT&CK ID, the extractor retains the record with the newest `modified` timestamp.
 
-
 ### Description handling
-
 
 The extractor preserves two description fields:
 
@@ -472,36 +391,27 @@ The extractor preserves two description fields:
 
 The cleaner does not rewrite source meaning or generate new content.
 
-
 ### Tactic handling
 
-
 The extractor:
-
 
 - Retains only `kill_chain_phases` associated with `mitre-attack`
 - Preserves tactic short names
 - Creates readable display names
 - Removes duplicate tactics within a record
 
-
 ### Platform handling
 
-
 The extractor:
-
 
 - Reads `x_mitre_platforms`
 - Keeps non‑empty string values
 - Removes duplicates
 - Sorts platform values for consistency
 
-
 ---
 
-
 ## Processed record schema
-
 
 Each line in `data/processed/techniques.jsonl` is one JSON object.
 
@@ -521,7 +431,6 @@ Each line in `data/processed/techniques.jsonl` is one JSON object.
 | `modified`         | string or null | Source modification timestamp                        |
 
 ### Example record
-
 
 ```json
 {
@@ -549,16 +458,13 @@ Each line in `data/processed/techniques.jsonl` is one JSON object.
 }
 ```
 
-
 ---
-
 
 ## Size and chunking
 
-
 ### Initial size analysis
 
-The active Enterprise technique corpus had the following cleaned-description lengths during the initial size analysis:
+The active Enterprise technique corpus had the following cleaned‑description lengths during the initial size analysis:
 
 | Measure           | Description words |
 |-------------------|------------------:|
@@ -572,14 +478,11 @@ The active Enterprise technique corpus had the following cleaned-description len
 
 ### Current approach
 
-
 The corpus is not chunked.
-
 
 Technique and sub‑technique records are already compact, source‑native units. Keeping each record intact preserves the connection between technique identity, tactic and platform metadata, source description, and provenance.
 
 ### Future trigger
-
 
 Introduce a separate document‑chunking process only if the corpus expands to long‑form materials, such as:
 
@@ -590,30 +493,22 @@ Introduce a separate document‑chunking process only if the corpus expands to l
 - Detection guidance
 - Long mitigation documentation
 
-
 A future expanded architecture may contain:
-
 
 ```text
 techniques       # Canonical ATT&CK technique records
 document_chunks  # Passages from long supporting documents
 ```
 
-
 ---
-
 
 ## Database representation
 
-
 The processed corpus is loaded into the PostgreSQL `techniques` table.
-
 
 One processed technique record maps to one database row.
 
-
 The loader creates an `embedding_text` field from:
-
 
 ```text
 ATT&CK ID: <attack_id>
@@ -621,19 +516,15 @@ Technique: <name>
 Tactics: <display tactic names>
 Platforms: <platform names>
 
-
 Description:
 <description_clean>
 ```
 
-
 This keeps technique identity and useful metadata associated with the source description used for semantic retrieval.
-
 
 The same `embedding_text` field is also used as the document representation for local cross‑encoder reranking. For each incident narrative, the reranker compares the narrative with the complete structured ATT&CK text for candidates returned by first‑stage vector retrieval.
 
 The project does not maintain a separate reranking corpus, duplicate ATT&CK descriptions, or document chunks for the current technique corpus.
-
 
 Embeddings are generated after structured records are loaded. The current local embedding baseline and vector‑index strategy are implementation decisions recorded in DEC‑011 and DEC‑012.
 
@@ -649,21 +540,15 @@ Local CPU cross-encoder reranking
 Ranked ATT&CK technique or sub-technique candidates
 ```
 
-
 Answer generation uses retrieved records from this database as context but does not alter the stored corpus. Prompts, models, answer schemas, retrieval experiments, and reranking metrics are described in [`evaluation-notes.md`](evaluation-notes.md) and [`decisions.md`](decisions.md).
-
 
 Database setup, embedding commands, reranking benchmark commands, and verification checks are maintained in [`runbook.md`](runbook.md).
 
-
 ---
-
 
 ## External benchmark checks
 
-
 ### Dataset structure
-
 
 The Expert external dataset contains three pre‑split TSV files:
 
@@ -672,7 +557,6 @@ expert_train.tsv
 expert_dev.tsv
 expert_test.tsv
 ```
-
 
 Each record contains:
 
@@ -693,37 +577,27 @@ The held‑out test split must not be used to tune retrieval configuration, embe
 
 ### Label compatibility rule
 
-
 A future external benchmark record is eligible only if every upstream expected ATT&CK ID is active in the project's pinned local Enterprise ATT&CK corpus.
-
 
 Records with one or more `deprecated`, `revoked`, or `absent` expected IDs are excluded from the curated benchmark. The original upstream files are never edited.
 
-
 ### Compatibility validation
 
-
 The validation module is:
-
 
 ```text
 src/evaluation/validate_external_expert_labels.py
 ```
 
-
 It compares all Expert labels with active local Enterprise ATT&CK `attack-pattern` records.
 
-
 The report is written to:
-
 
 ```text
 data/evaluation_reports/expert_label_compatibility.csv
 ```
 
-
 Initial result across all Expert splits:
-
 
 | Status     | Unique labels |
 |-----------|---------------:|
@@ -733,11 +607,9 @@ Initial result across all Expert splits:
 | Absent    |              0 |
 | Total     |            290 |
 
-
 ### Held‑out test compatibility
 
 The upstream Expert test split contains 157 records.
-
 
 Four records contain one or more non‑active expected labels in the current local corpus:
 
@@ -748,21 +620,17 @@ Four records contain one or more non‑active expected labels in the current loc
 130
 ```
 
-
 Therefore, 153 source records remain technically compatible before later curation for narrative quality, text length, label count, and answer‑evaluation suitability.
 
 Any future `reviewed_primary_attack_id` or similar field used for evaluation will be defined in a separate curated‑benchmark artefact or evaluation record and will not modify the original external label list or the ATT&CK corpus.
 
 ---
 
-
 ## Data‑quality checks
 
 ### Current ATT&CK corpus checks
 
-
 The pipeline currently checks:
-
 
 - Raw bundle existence before extraction
 - JSON validity during extraction
@@ -776,12 +644,9 @@ The pipeline currently checks:
 - SHA‑256 fingerprinting of processed JSONL input
 - Construction of `embedding_text` from ATT&CK ID, name, tactics, platforms, and cleaned description during database loading
 
-
 ### Current external benchmark checks
 
-
 The external dataset feasibility process currently checks:
-
 
 - Presence of Expert train, development, and test splits
 - Expected `text1` and `labels` fields
@@ -794,7 +659,7 @@ The external dataset feasibility process currently checks:
 
 ### Planned checks
 
-- Automated corpus-profile report with counts and missing-value checks
+- Automated corpus‑profile report with counts and missing‑value checks
 - Sampled manual review of extracted ATT&CK records
 - Record‑count comparison against the selected source release
 - Parent‑technique relationship validation for sub‑techniques
@@ -812,14 +677,13 @@ The external dataset feasibility process currently checks:
 - Query-rewrite prompt validation to confirm that rewritten queries preserve narrative behaviours without adding inferred techniques or tools
 - Query-rewrite cache validation to confirm that cached rewrites match original narratives and are reused correctly across benchmark runs
 
-Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md`](evaluation-notes.md).
+Evaluation‑specific checks and retrieval metrics belong in [`evaluation-notes.md`](evaluation-notes.md).
 
 ---
 
-
 ## Known limitations
 
-- The retrieval corpus contains ATT&CK techniques and sub-techniques only; it does not contain observed real-world incident narratives.
+- The retrieval corpus contains ATT&CK techniques and sub‑techniques only; it does not contain observed real‑world incident narratives.
 - The corpus excludes procedure examples, relationships, software, groups, campaigns, mitigations, detections, data sources, and data components.
 - `parent_attack_id` may remain `null` until parent‑technique enrichment is implemented.
 - The corpus can change when built from the moving upstream default reference.
@@ -840,37 +704,27 @@ Evaluation-specific checks and retrieval metrics belong in [`evaluation-notes.md
 
 ---
 
-
 ## Source attribution
-
 
 Cyber Threat Identifier uses MITRE ATT&CK content under MITRE's terms of use.
 
-
 The repository and any distributed derived corpus artefact must retain applicable MITRE copyright, licence, and attribution wording.
-
 
 Cyber Threat Identifier is independent and must not imply affiliation with, sponsorship by, or endorsement from The MITRE Corporation.
 
-
 Use **MITRE ATT&CK®** for the first substantive public reference, then use **ATT&CK** where appropriate. Do not use ATT&CK in the project, product, repository, service, company, or logo name.
-
 
 The Security‑TTP‑Mapping repository requests citation of its associated EACL 2024 paper. If the Expert subset is used in final evaluation, record the repository revision, cite the upstream work, link the repository, and state that any project benchmark was filtered or adapted from the upstream Expert data.
 
 See:
 
-
 - [MITRE ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/)
 - [MITRE ATT&CK Legal and Branding Guidance](https://attack.mitre.org/resources/legal-and-branding/)
 - [Security-TTP-Mapping repository](https://github.com/tumeteor/mitre-ttp-mapping)
 
-
 ---
 
-
 ## Open dataset questions
-
 
 - Which ATT&CK release tag or commit should become the first fixed formal evaluation baseline?
 - Should `parent_attack_id` be populated in the next extraction iteration?
