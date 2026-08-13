@@ -1,69 +1,99 @@
 # Evaluation notes
 
+
 This document records the design, datasets, metrics, experiments, and results used to evaluate Cyber Threat Identifier.
+
 
 It covers retrieval and answer generation separately where possible. Stable project-wide design choices belong in [`decisions.md`](decisions.md); source provenance and data-processing details belong in [`dataset-notes.md`](dataset-notes.md); commands for running evaluation belong in [`runbook.md`](runbook.md).
 
+
 ---
+
 
 ## Evaluation goal
 
+
 Measure whether the system can retrieve and present plausible Enterprise MITRE ATT&CK technique or sub-technique candidates from incident narratives in a way that is useful, evidence-grounded, inspectable, and reproducible.
+
 
 The system is intended to support analyst review. It does not confirm adversary activity, perform incident triage, assign attribution, or replace human judgement.
 
+
 ---
+
 
 ## Evaluation approach
 
+
 Evaluation is divided into three layers:
+
 
 1. **Retrieval evaluation** — whether relevant active ATT&CK records are returned near the top of the candidate list.
 2. **Answer evaluation** — whether the generated response makes appropriately bounded claims that are supported by both the incident narrative and retrieved ATT&CK evidence.
 3. **Reproducibility evaluation** — whether the same corpus, model configuration, query set, and parameters reproduce comparable outputs.
 
+
 Retrieval and generation are evaluated separately because poor end-to-end answers can result from retrieval failures, unsupported generation, or both.
+
 
 ---
 
+
 ## Retrieval quality
+
 
 ### Goal
 
+
 Determine whether the system retrieves expected active Enterprise ATT&CK technique records within a small ranked candidate set.
+
 
 ### Current benchmark setup
 
+
 The current implemented retrieval benchmark uses Expert-derived incident narratives and active Enterprise ATT&CK technique and sub-technique records.
 
+
 The benchmark input file is:
+
 
 ```text
 data/eval/expert_retrieval_cases.csv
 ```
 
+
 The current benchmark contains 226 cases assembled from the upstream Expert development and test splits. It is useful for implementation comparisons but is not a frozen held-out benchmark.
+
 
 The retrieval unit is one processed ATT&CK technique or sub-technique record. The corpus is not chunked.
 
+
 All compared methods use the same local ATT&CK corpus, case set, expected-label format, and ranking metrics.
+
 
 ### Retrieval metrics
 
+
 Metrics are computed by `src/evaluation/metrics.py`.
+
 
 - **Recall@k** — proportion of expected technique IDs present in the top \(k\) retrieved records.
 - **Hit@k** — proportion of cases with at least one expected technique ID in the top \(k\) retrieved records.
 - **MRR** — reciprocal rank of the first expected technique ID, averaged across cases.
 - **Latency** — measured duration for retrieval stages where timing is implemented.
 
+
 Metrics are reported at Top 1, Top 3, Top 5, and Top 10.
+
 
 Top 3 is a useful primary quality view because analyst and answer-generation workflows generally inspect only a small candidate set. Top 5 and Top 10 support diagnostic analysis of candidates that are retrieved but ranked too low.
 
+
 ### Retrieval methods compared
 
+
 The implemented retrieval methods are:
+
 
 - **Text** — PostgreSQL full-text retrieval over ATT&CK `embedding_text`.
 - **Vector** — pgvector cosine-similarity retrieval using normalised `sentence-transformers/all-MiniLM-L6-v2` embeddings.
@@ -71,21 +101,27 @@ The implemented retrieval methods are:
 - **Vector + reranking** — top 20 vector candidates reordered by a local cross-encoder.
 - **Query rewrite + vector + reranking** — LLM-rewritten queries followed by vector retrieval and reranking.
 
+
 ### Implemented benchmark commands
+
 
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
+
 
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
+
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+
 
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --candidate-k 20 \
@@ -93,15 +129,21 @@ uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
+
 The reranking benchmark fails if the local reranker cannot load. It does not silently fall back to vector-only retrieval, preventing invalid reranking results from being reported.
+
 
 ### Text, vector, and hybrid findings
 
+
 Text-only retrieval is a weak lexical baseline on this corpus. Even after loosening score filtering, performance remained near zero on the full 226-case run.
+
 
 Vector retrieval is substantially stronger than text-only retrieval across all core ranking metrics.
 
+
 Hybrid retrieval using Reciprocal Rank Fusion is slightly stronger than vector-only retrieval on some metrics, including Recall@1, Recall@3, Hit@3, and MRR. Recall@5 and Recall@10 are identical between the earlier vector and hybrid benchmark runs.
+
 
 | Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -109,13 +151,18 @@ Hybrid retrieval using Reciprocal Rank Fusion is slightly stronger than vector-o
 | Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
 | Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
 
+
 The hybrid uplift is real but small. Before document reranking was implemented, vector was selected as the simpler v1 default because hybrid's marginal gain did not justify its added lexical retrieval and fusion complexity.
+
 
 ### Document reranking experiment
 
+
 A two-stage local reranking configuration was implemented and benchmarked on 2026-08-12.
 
+
 The pipeline is:
+
 
 ```text
 Incident narrative
@@ -125,7 +172,9 @@ Incident narrative
   → Return top 10 reranked candidates for benchmark evaluation
 ```
 
+
 Configuration:
+
 
 | Setting | Value |
 |---|---|
@@ -139,9 +188,12 @@ Configuration:
 | Production/UI target depth | Top 5 initially |
 | Benchmark cases | 226 Expert-derived cases |
 
+
 The reranker receives the existing `embedding_text` field, which contains the ATT&CK ID, technique name, tactics, platforms, and cleaned ATT&CK description. No additional chunking or database schema migration was required.
 
+
 ### Vector versus reranking results
+
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -153,19 +205,26 @@ The reranker receives the existing `embedding_text` field, which contains the AT
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
 
+
 Vector-plus-reranking improves every reported ranking metric over vector-only retrieval on the current 226-case evaluation set.
 
+
 The largest practical gains occur near the top of the ranked list:
+
 
 - MRR increased from 0.3134 to 0.3578.
 - Hit@3 increased from 0.3540 to 0.4159.
 - Recall@3 increased from 0.1940 to 0.2526.
 
+
 These results indicate that reranking improves the order of candidates already found by vector retrieval.
+
 
 ### Reranking latency
 
+
 The reranking benchmark records query embedding, vector search, reranking, and total retrieval timing.
+
 
 | Timing metric | Result |
 |---|---:|
@@ -174,15 +233,21 @@ The reranking benchmark records query embedding, vector search, reranking, and t
 | Median reranking time | 1,223.29 ms |
 | P95 reranking time | 1,414.23 ms |
 
+
 CPU reranking is the dominant contributor to end-to-end retrieval latency.
+
 
 Vector-only latency was not separately instrumented in the current vector benchmark. The reported reranking timings therefore establish the latency of the selected two-stage configuration, but do not yet provide a complete like-for-like vector-only latency comparison.
 
+
 ### Query rewriting experiment
+
 
 A query-rewriting configuration was implemented and benchmarked on 2026-08-13.
 
+
 The pipeline is:
+
 
 ```text
 Incident narrative
@@ -193,7 +258,9 @@ Incident narrative
   → Return top 10 reranked candidates for benchmark evaluation
 ```
 
+
 Configuration:
+
 
 | Setting | Value |
 |---|---|
@@ -209,9 +276,12 @@ Configuration:
 | Benchmark output depth | Top 10 |
 | Benchmark cases | 226 Expert-derived cases |
 
+
 The query rewriter receives the full incident narrative and returns a concise ATT&CK-oriented retrieval query. Prompt instructions direct the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
 
+
 ### Vector + rerank versus query rewrite + vector + rerank results
+
 
 | Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
 |---|---:|---:|---:|
@@ -223,19 +293,26 @@ The query rewriter receives the full incident narrative and returns a concise AT
 | Hit@10 | 0.5973 | 0.6726 | +0.0753 |
 | MRR | 0.3578 | 0.3940 | +0.0362 |
 
+
 Query rewriting improves all reported ranking metrics over the DEC-018 vector-plus-reranking baseline.
 
+
 The improvements are most pronounced at deeper cutoffs:
+
 
 - Recall@10 increased from 0.3866 to 0.4581.
 - Hit@10 increased from 0.5973 to 0.6726.
 - MRR increased from 0.3578 to 0.3940.
 
+
 These results indicate that query rewriting helps retrieve additional relevant candidates that were absent from the top 20 vector pool, while also improving the ordering of candidates within the reranked set.
+
 
 ### Query rewriting latency
 
+
 The query-rewrite benchmark records query rewriting, embedding, vector search, reranking, and total retrieval timing.
+
 
 
 | Timing metric | Result |
@@ -245,49 +322,72 @@ The query-rewrite benchmark records query rewriting, embedding, vector search, r
 | Median query-rewrite time | 3,183.88 ms |
 | P95 query-rewrite time | 10,954.94 ms |
 
+
 Query rewriting is the dominant contributor to end-to-end retrieval latency, adding approximately 3.1 seconds median latency and up to 11 seconds at P95 compared to the DEC-018 baseline.
+
 
 Rate limiting at 15 requests/minute worked as expected, with 226 queries completing in approximately 15 minutes of wall-clock time.
 
+
 ### Retrieval decision
+
 
 Vector retrieval plus local cross-encoder reranking is the selected v1 retrieval configuration.
 
+
 The selection is based on consistent improvement across Recall@1/3/5/10, Hit@3/10, and MRR relative to vector-only retrieval, combined with acceptable latency for interactive analyst-assist workflows. In the final synced local CPU benchmark run, median total retrieval latency was 1,254.79 ms, p95 total latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms.
+
 
 Query rewriting improved all reported metrics but introduced unacceptable latency (~3.1s median, ~11s P95) for interactive use. It is documented as an evaluated best-practice component (DEC-019) and retained for future re-evaluation under conditions such as lower-latency LLM endpoints, improved prompts, or hybrid retrieval strategies.
 
+
 Retain text-only, vector-only, hybrid retrieval, and query-rewrite retrieval as implemented baselines and diagnostic tools.
+
 
 The selected default is documented in DEC-018. It supersedes DEC-015 only for the default v1 retrieval configuration. The query-rewriting evaluation and decision are documented in DEC-019.
 
+
 ### Interpretation and limitations
+
 
 The results are corpus-specific and benchmark-specific. They do not establish general cyber-security retrieval performance or production readiness.
 
+
 The current 226-case file contains development- and test-derived cases. It should not be described as a frozen held-out final benchmark.
+
 
 The reranker cannot recover techniques that are absent from the first-stage top 20 vector candidates. It improves ordering only within the vector candidate pool.
 
+
 Query rewriting can recover candidates outside the original vector pool by changing the query embedding, but at significant latency cost.
+
 
 The selected reranker is a compact general-domain MS MARCO cross-encoder. It is an evaluated baseline, not evidence that this is the optimal model for ATT&CK retrieval.
 
+
 The query-rewriting model (Gemini 3.1 Flash Lite) is an evaluated baseline; alternative models or prompts may yield different quality-latency trade-offs.
+
 
 ONNX optimisation, GPU execution, reranker-model comparison, candidate-pool-depth tuning, and query-rewrite prompt optimisation are deferred. They are future performance experiments, not required for the current assessed implementation.
 
+
 ---
+
 
 ## Answer quality
 
+
 ### Goal
+
 
 Determine whether generated answers are concise, useful for analyst review, and grounded in the supplied incident narrative and retrieved ATT&CK records.
 
+
 ### Expected answer behaviour
 
+
 A good answer should:
+
 
 - Identify one primary candidate when evidence supports one, and provide a small number of alternatives where warranted.
 - Use ATT&CK IDs and names exactly as represented in the retrieved local corpus.
@@ -297,9 +397,12 @@ A good answer should:
 - State uncertainty when evidence is incomplete or candidates are ambiguous.
 - Remain concise enough for practical analyst review.
 
+
 ### Unacceptable answer behaviour
 
+
 A failed answer includes one or more of the following:
+
 
 - Names an ATT&CK technique not included in the retrieved candidate records.
 - States technical facts unsupported by the narrative or retrieved ATT&CK evidence.
@@ -308,9 +411,12 @@ A failed answer includes one or more of the following:
 - Treats parent and sub-technique labels as independent evidence when they are only hierarchy-related.
 - Produces generic cyber-security explanation without tying it to observed behaviour.
 
+
 ### Initial human-review rubric
 
+
 Score each category as `0`, `1`, or `2`.
+
 
 | Category | 0 | 1 | 2 |
 |---|---|---|---|
@@ -320,20 +426,27 @@ Score each category as `0`, `1`, or `2`.
 | Uncertainty handling | Overconfident confirmation language | Mixed confidence language | Clearly frames outputs as candidates for analyst review |
 | Analyst usefulness | Unclear, generic, or excessively verbose | Understandable but incomplete or poorly prioritised | Concise, structured, and useful for review |
 
+
 Maximum score: 10.
+
 
 Record a short reviewer rationale for scores of `0` or `1` so that recurring failure patterns can be analysed.
 
+
 ### Current answer-evaluation status
 
+
 The answer-generation pipeline is implemented for Expert-derived cases and writes structured outputs to:
+
 
 ```text
 data/evaluation_reports/expert_answer_generation_v1.jsonl
 data/evaluation_reports/expert_answer_generation_v1.csv
 ```
 
+
 Each record includes, at minimum:
+
 
 - Evaluation case metadata.
 - Expected and retrieved ATT&CK IDs.
@@ -342,19 +455,27 @@ Each record includes, at minimum:
 - Review-required flag.
 - Prompt version, LLM model, and token metadata when available.
 
+
 Current outputs are suitable for qualitative inspection, checking that generated IDs remain within retrieved context, and designing the final answer-evaluation workflow.
 
-A full rubric-scored human evaluation remains to be completed; this will be done after the LLM-as-judge comparison and manual review of disagreement cases (see below).
+
+The pairwise LLM-as-judge comparison between `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` is complete, with judge outputs and agreement metrics integrated into the Streamlit monitoring dashboard (`app/dashboard.py`). A full rubric-scored human evaluation remains to be completed; this will focus on a sampled subset of the 57 judge-disagreement cases (see below).
+
 
 ---
 
+
 ## Pairwise LLM-as-judge answer comparison
+
 
 ### Goal
 
+
 Compare answer-generation models on the 226-case expert-derived set using an automated, repeatable method that works over the DEC‑017 structured outputs, while quantifying how often different LLM judges agree.
 
+
 ### Dataset
+
 
 - **Source:** Expert-derived incident narratives used for retrieval evaluation.
 - **Cases:** 226.
@@ -365,12 +486,15 @@ Compare answer-generation models on the 226-case expert-derived set using an aut
     - `gemini-3.5-flash-lite`
   - Fields used in judging include `answer_summary` and `retrieved_attack_ids`.
 
+
 ### Judge setup
+
 
 Implemented in `src/evaluation/run_llm_judge_pairwise.py`:
 
+
 - For each case:
-  - Randomly assign the two model outputs to “Answer A” and “Answer B” (A/B randomisation to reduce position bias).
+  - Randomly assign the two model outputs to "Answer A" and "Answer B" (A/B randomisation to reduce position bias).
   - Build a judge prompt that shows:
     - The narrative.
     - Answer A summary and retrieved IDs.
@@ -386,31 +510,39 @@ Implemented in `src/evaluation/run_llm_judge_pairwise.py`:
     - `winner`: `"A"` or `"B"`.
     - `confidence`: `"low"`, `"medium"`, or `"high"`.
 
+
 - Judges:
   - Run the pairwise judge twice per case:
     - Once with `gemini-3.1-flash-lite` as judge.
     - Once with `gemini-3.5-flash-lite` as judge.
   - Use `src.llm_client.generate_text_answer` for judge calls, which embeds retry and exponential backoff on rate-limit and transient errors.
 
+
 - Implementation details:
   - Legacy `RateLimiter` references were removed; rate limiting is now handled within `llm_client`.
   - Checkpointing is enabled: partial results are written after each case so runs can resume after quota resets.
 
+
 ### Commands
 
+
 Judge runs:
+
 
 ```bash
 uv run python -m src.evaluation.run_llm_judge_pairwise \
   --judge-model gemini-3.1-flash-lite \
   --output data/evaluation_reports/expert_llm_judged_31_as_judge.csv
 
+
 uv run python -m src.evaluation.run_llm_judge_pairwise \
   --judge-model gemini-3.5-flash-lite \
   --output data/evaluation_reports/expert_llm_judged_35_as_judge.csv
 ```
 
+
 Agreement analysis:
+
 
 ```bash
 uv run python -m src.evaluation.analyze_judge_agreement \
@@ -418,14 +550,19 @@ uv run python -m src.evaluation.analyze_judge_agreement \
   --judge-35 data/evaluation_reports/expert_llm_judged_35_as_judge.csv
 ```
 
+
 ### Judge outputs
 
+
 Per-judge runs produce:
+
 
 - `data/evaluation_reports/expert_llm_judged_31_as_judge.csv`
 - `data/evaluation_reports/expert_llm_judged_35_as_judge.csv`
 
+
 Each row includes:
+
 
 - `eval_id`
 - `judge_model`
@@ -434,70 +571,185 @@ Each row includes:
 - `confidence`
 - Token-usage metadata where available.
 
+
 Agreement analysis produces:
+
 
 - `data/evaluation_reports/judge_agreement_summary.csv` — aggregate counts, rates, and per-judge preference distributions.
 - `data/evaluation_reports/judge_disagreements.csv` — the subset of cases where 3.1 and 3.5 disagree as judges.
 
+
 ### Current results
 
+
 On the 226-case run:
+
 
 - **Total cases:** 226
 - **Agreement between judges:** 169 / 226 (**74.78%**)
 - **Disagreement:** 57 / 226 (**25.22%**)
 
+
 Judge preferences:
+
 
 - **3.1-as-judge:**
   - Prefers 3.1 outputs: 164 (72.57%)
   - Prefers 3.5 outputs: 62 (27.43%)
 
+
 - **3.5-as-judge:**
   - Prefers 3.1 outputs: 149 (65.93%)
   - Prefers 3.5 outputs: 77 (34.07%)
 
+
 These metrics indicate that:
+
 
 - LLM judges agree on the better answer in roughly three-quarters of cases.
 - Both judges show a consistent tendency to prefer `gemini-3.1-flash-lite` answers on this dataset.
 
+
+The judge outputs and agreement metrics are visualised in the Streamlit monitoring dashboard (`app/dashboard.py`), which includes charts for:
+- Judge agreement rate.
+- Judge preferences for each judge model.
+
+
 ### Planned human review of disagreements
+
 
 The 57 disagreement cases are saved to `data/evaluation_reports/judge_disagreements.csv` and will form the primary pool for later manual inspection.
 
+
 Planned approach (not yet completed):
+
 
 - Sample a small, documented subset (e.g. 15–20 cases) from `judge_disagreements.csv`.
 - For each sampled `eval_id`, inspect:
   - The narrative.
-  - Each model’s `answer_summary` and retrieved IDs.
+  - Each model's `answer_summary` and retrieved IDs.
 - Assess at a high level:
   - Plausibility and relevance to the narrative.
   - Whether retrieved IDs are at least superficially consistent with described behaviour.
   - Obvious failure modes (off-topic answers, clearly mismatched techniques, over-confident hallucinations).
 - Summarise:
-  - How often disagreements correspond to clear quality differences vs “both acceptable”.
+  - How often disagreements correspond to clear quality differences vs "both acceptable".
   - Any recurring error patterns per model.
   - Any safety-relevant concerns.
 
-A separate decision record will capture the findings and any resulting default-model choice; DEC‑019 documents the judge setup and agreement results only, not a final model decision.
+
+A separate decision record will capture the findings and any resulting default-model choice; DEC‑020 documents the judge setup and agreement results only, not a final model decision.
+
 
 ### Interpretation and limitations
+
 
 - LLM judges are not ground truth; they provide a scalable comparative signal. Cross-judge agreement (~75%) helps quantify reliability but does not eliminate judge bias.
 - Both judges favour `gemini-3.1-flash-lite` on this dataset, but without manual review the preference magnitudes should be treated as advisory rather than definitive.
 - The 226-case set is still an internal expert-derived dataset, not a frozen held-out external benchmark.
 - Free-tier API limits introduce slow, long-running judge jobs; checkpointing mitigates this but further runs may need adjusted limits or scheduling.
-- Until disagreement cases are manually reviewed, no change is made to the project’s default answer-generation model.
+- Until disagreement cases are manually reviewed, no change is made to the project's default answer-generation model.
+
 
 ---
 
+
+## Streamlit monitoring dashboard
+
+
+### Goal
+
+
+Provide an interactive interface for:
+- Inspecting evaluation metrics and latency distributions.
+- Visualising judge preferences and agreement rates.
+- Supporting future manual review of disagreement cases.
+
+
+### Dashboard contents
+
+
+Implemented in `app/dashboard.py`, the monitoring dashboard currently includes five charts:
+
+
+1. **Answer-generation latency distribution**
+   - Histogram of `latency_seconds` from `expert_llm_comparison_v1.csv`.
+   - Shows median and distribution of answer-generation times across models.
+
+
+2. **Judge preferences (3.5 Flash-Lite as judge)**
+   - Bar chart of winner counts from `expert_llm_judged_35_as_judge.csv`.
+   - Shows how often 3.5-as-judge prefers 3.1 vs 3.5 outputs.
+
+
+3. **Retrieval method comparison**
+   - Grouped bar chart of MRR and Hit@3 for:
+     - Vector only.
+     - Vector + rerank.
+     - Query rewrite + vector + rerank.
+   - Currently uses hard-coded metrics from DEC-018 and DEC-019; future work can read dynamically from benchmark CSVs.
+
+
+4. **Judge agreement rate**
+   - Pie chart from `judge_agreement_summary.csv`.
+   - Shows proportion of cases where 3.1-as-judge and 3.5-as-judge agree vs disagree.
+
+
+5. **User feedback distribution**
+   - Placeholder bar chart intended to show thumbs-up vs thumbs-down counts from `data/feedback/feedback.csv`.
+   - Currently displays "No feedback collected yet" because feedback persistence is not yet implemented.
+
+
+### Data sources
+
+
+The dashboard reads from:
+
+
+- `data/evaluation_reports/expert_llm_comparison_v1.csv`
+- `data/evaluation_reports/expert_llm_judged_35_as_judge.csv`
+- `data/evaluation_reports/judge_agreement_summary.csv`
+- `data/feedback/feedback.csv` (optional, not yet populated)
+
+
+If a file is missing, the corresponding chart shows an error message or info notice rather than failing the entire dashboard.
+
+
+### Usage
+
+
+Run the dashboard via:
+
+
+```bash
+make dashboard
+# or
+PYTHONPATH=. uv run streamlit run app/dashboard.py --server.fileWatcherType=none
+```
+
+
+The dashboard is also accessible as a tab in the main Streamlit app (`app/home.py`).
+
+
+### Limitations and future work
+
+
+- Feedback persistence is not yet implemented; the feedback chart is a placeholder.
+- The retrieval-comparison chart currently uses hard-coded metrics; future versions can read dynamically from benchmark CSVs.
+- Additional views (e.g. per-case inspection, retrieval diagnostics, disagreement-case browser) can be added as new dashboard pages or tabs.
+
+
+---
+
+
 ## External benchmark candidate
+
 
 ### Source
 
+
 The leading external benchmark candidate is the Expert configuration of Security-TTP-Mapping:
+
 
 ```text
 Repository: https://github.com/tumeteor/mitre-ttp-mapping
@@ -506,9 +758,12 @@ Files: expert_train.tsv, expert_dev.tsv, expert_test.tsv
 Fields: text1, labels
 ```
 
+
 The upstream repository remains local and ignored during feasibility work. Raw narratives must not be committed publicly unless redistribution, provenance, and attribution treatment are explicitly resolved.
 
+
 ### Split policy
+
 
 | Upstream split | Purpose | Use rule |
 |---|---|---|
@@ -516,25 +771,34 @@ The upstream repository remains local and ignored during feasibility work. Raw n
 | `expert_dev.tsv` | Finalise retrieval settings, curation rules, prompts, answer schema, and rubric | May be used repeatedly during development |
 | `expert_test.tsv` | Held-out external evaluation | Do not use to tune retrieval, prompt, model, or curation thresholds |
 
+
 The Expert test split contains 157 upstream records. It must remain held out until the retrieval configuration, answer contract, curation rules, and review rubric are frozen.
+
 
 ### Label compatibility
 
+
 A final curated benchmark record is eligible only if every upstream expected ATT&CK ID is active in the project's pinned local Enterprise ATT&CK corpus.
 
+
 The compatibility script is:
+
 
 ```text
 src/evaluation/validate_external_expert_labels.py
 ```
 
+
 The current report is:
+
 
 ```text
 data/evaluation_reports/expert_label_compatibility.csv
 ```
 
+
 Initial validation across Expert train, development, and test splits found:
+
 
 | Status | Unique label count |
 |---|---:|
@@ -544,17 +808,24 @@ Initial validation across Expert train, development, and test splits found:
 | Absent | 0 |
 | Total | 290 |
 
+
 Four held-out test records contain one or more non-active labels: upstream indices `12`, `17`, `32`, and `130`.
+
 
 Before additional curation, 153 of 157 Expert test records are compatible with the current active ATT&CK corpus.
 
+
 Do not automatically remap deprecated or revoked labels. Keep the upstream TSV files unchanged and preserve original label lists, split, row index, and source revision.
+
 
 ### Future curation rules
 
+
 Final curation rules must be selected using only `expert_dev.tsv`, then frozen and applied mechanically to `expert_test.tsv`.
 
+
 Potential eligibility rules include:
+
 
 - Every expected ATT&CK ID is active in the pinned corpus.
 - The narrative contains observable technical behaviour.
@@ -563,15 +834,21 @@ Potential eligibility rules include:
 - Text-length and label-count thresholds are selected on development data before test use.
 - Every inclusion or exclusion receives a recorded reason.
 
+
 The upstream labels are unordered and multi-label. Do not invent a primary ground-truth label. Preserve upstream labels as a set and use any future reviewed primary label only as a separately documented human-created field.
+
 
 ---
 
+
 ## Evaluation records
+
 
 ### Retrieval record
 
+
 Store one retrieval result per evaluation case and configuration.
+
 
 ```json
 {
@@ -594,9 +871,12 @@ Store one retrieval result per evaluation case and configuration.
 }
 ```
 
+
 ### Answer record
 
+
 Store one generated-answer record per evaluation case and generation configuration.
+
 
 ```json
 {
@@ -627,9 +907,12 @@ Store one generated-answer record per evaluation case and generation configurati
 }
 ```
 
+
 ### Current artefacts
 
+
 Current retrieval result files include:
+
 
 - `expert_text_retrieval_results.csv`
 - `expert_vector_retrieval_results.csv`
@@ -637,7 +920,9 @@ Current retrieval result files include:
 - `expert_vector_reranked_retrieval_results.csv`
 - `expert_query_rewrite_retrieval_results.csv` (local, contains external narratives)
 
+
 Current answer-generation and judge files include:
+
 
 - `expert_answer_generation_v1.jsonl`
 - `expert_answer_generation_v1.csv`
@@ -646,23 +931,33 @@ Current answer-generation and judge files include:
 - `judge_agreement_summary.csv`
 - `judge_disagreements.csv`
 
+
 Do not commit reports containing external narrative text unless redistribution permissions have been reviewed. Public artefacts should prefer aggregate metrics, source references, case identifiers or hashes where appropriate, and derived diagnostics that do not reproduce upstream narratives.
+
 
 ---
 
+
 ## Experiment log template
+
 
 ## YYYY-MM-DD — Short experiment title
 
+
 ### Objective
+
 
 What is being tested?
 
+
 ### Evaluation layer
+
 
 Retrieval / answer generation / end-to-end / reproducibility.
 
+
 ### Dataset
+
 
 - Dataset or benchmark name:
 - Split:
@@ -671,7 +966,9 @@ Retrieval / answer generation / end-to-end / reproducibility.
 - ATT&CK corpus release:
 - Corpus version or hash:
 
+
 ### Setup
+
 
 - Retrieval method:
 - Candidate pool:
@@ -685,7 +982,9 @@ Retrieval / answer generation / end-to-end / reproducibility.
 - Prompt version:
 - Generation parameters:
 
+
 ### Metrics
+
 
 - Recall@1:
 - Recall@3:
@@ -700,19 +999,26 @@ Retrieval / answer generation / end-to-end / reproducibility.
 - Grounding failures:
 - Unsupported-claim failures:
 
+
 ### Result summary
+
 
 - What improved?
 - What regressed?
 - What stayed unclear?
 
+
 ### Decision or follow-up
+
 
 State whether this is an experiment-specific observation or a stable decision requiring an update to `decisions.md`.
 
+
 ---
 
+
 ## Early evaluation principles
+
 
 - Prefer grounded evidence over polished wording.
 - Evaluate retrieval separately from generation whenever possible.
