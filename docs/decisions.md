@@ -1,10 +1,14 @@
 # Decisions
 
+
 This document records stable design decisions for Cyber Threat Identifier.
+
 
 Each entry uses a lightweight Architecture Decision Record (ADR) format. For chronological implementation notes, experiments, and progress updates, see [`project-log.md`](project-log.md).
 
+
 For corpus provenance, schema, processing rules, and data-quality notes, see [`dataset-notes.md`](dataset-notes.md). For benchmark design, metrics, and evaluation findings, see [`evaluation-notes.md`](evaluation-notes.md). For reproducible setup and commands, see [`runbook.md`](runbook.md).
+
 
 ## Decision index
 
@@ -30,6 +34,28 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 | DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
 | DEC-019 | User query rewriting evaluation and decision             | Accepted          | 2026-08-13 |
 | DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted          | 2026-08-13 |
+
+| ID      | Decision                                                 | Status            | Date       |
+|---------|----------------------------------------------------------|-------------------|------------|
+| DEC-001 | Project scope                                            | Accepted          | 2026-07-27 |
+| DEC-002 | Core corpus selection                                    | Accepted          | 2026-07-27 |
+| DEC-003 | Product naming and ATT&CK references                     | Accepted          | 2026-07-27 |
+| DEC-004 | Public repository and attribution                        | Accepted          | 2026-07-30 |
+| DEC-005 | Repository structure                                     | Accepted          | 2026-07-29 |
+| DEC-006 | Execution convention                                     | Accepted          | 2026-07-29 |
+| DEC-007 | Source provenance and versioning                         | Accepted          | 2026-07-29 |
+| DEC-008 | Retrieval unit and chunking                              | Accepted          | 2026-07-29 |
+| DEC-009 | Processed corpus schema and snapshot policy              | Accepted          | 2026-07-30 |
+| DEC-010 | Database and embedding pipeline                          | Accepted          | 2026-07-29 |
+| DEC-011 | Embedding baseline                                       | Accepted baseline | 2026-07-30 |
+| DEC-012 | Vector index strategy                                    | Accepted          | 2026-07-30 |
+| DEC-013 | Documentation strategy                                   | Accepted          | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy                   | Accepted          | 2026-07-30 |
+| DEC-015 | Default retrieval method for v1                          | Superseded        | 2026-07-31 |
+| DEC-016 | Retrieval-module refactor and shared helpers             | Accepted          | 2026-07-31 |
+| DEC-017 | Answer-generation pipeline and output contract           | Accepted baseline | 2026-07-31 |
+| DEC-018 | Default retrieval configuration with reranking           | Accepted          | 2026-08-12 |
+| DEC-019 | User query rewriting evaluation and decision             | Accepted          | 2026-08-13 |
 
 ---
 
@@ -745,23 +771,17 @@ Treat this pipeline and schema as an accepted baseline: it is suitable for early
 
 ---
 
-
 ## DEC-018 — Default retrieval configuration with reranking
-
 
 **Status:** Accepted  
 **Date:** 2026-08-12  
 **Supersedes:** DEC-015 for the default v1 retrieval configuration
 
-
 ### Context
-
 
 DEC-015 selected vector retrieval as the v1 default after comparing text, vector, and hybrid retrieval. At that time, hybrid retrieval produced only a marginal improvement over vector retrieval and did not justify the additional complexity.
 
-
 A local second-stage document reranking experiment has now been implemented and evaluated. The experiment uses:
-
 
 - First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`.
 - PostgreSQL with pgvector cosine-distance search over active Enterprise MITRE ATT&CK technique and sub-technique records.
@@ -770,12 +790,9 @@ A local second-stage document reranking experiment has now been implemented and 
 - Existing structured ATT&CK `embedding_text` as the reranker document text. This contains ATT&CK ID, technique name, tactics, platforms, and cleaned description.
 - Return of the top 10 reranked records for benchmark compatibility.
 
-
 The vector-only and vector-plus-reranking configurations were evaluated against the same current 226-case Expert-derived retrieval set.
 
-
 Results were:
-
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -786,7 +803,6 @@ Results were:
 | Hit@3 | 0.3540 | 0.4159 | +0.0619 |
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
-
 
 The reranked configuration improved every reported retrieval metric.
 
@@ -840,9 +856,7 @@ Keep vector-only retrieval available as a fallback option for future interface/r
 - Use an ONNX-optimised reranker implementation before selecting a default.
 - Defer reranking until after answer-generation evaluation is complete.
 
-
 ### Consequences
-
 
 - The selected default improves all reported metrics over vector-only retrieval on the current Expert-derived evaluation set.
 - The strongest observed improvement is in ordering quality: MRR increased from 0.3134 to 0.3578, while Hit@3 increased from 0.3540 to 0.4159.
