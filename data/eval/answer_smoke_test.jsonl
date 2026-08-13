@@ -1,0 +1,2 @@
+{"case_id": "smoke-001", "narrative": "The attacker executed PowerShell scripts on a Windows server to download and run additional payloads."}
+{"case_id": "smoke-002", "narrative": "The intruder used RDP to log into a stolen account and then ran commands to add a new admin user."}

@@ -1,39 +1,35 @@
 # Decisions
 
-
 This document records stable design decisions for Cyber Threat Identifier.
-
 
 Each entry uses a lightweight Architecture Decision Record (ADR) format. For chronological implementation notes, experiments, and progress updates, see [`project-log.md`](project-log.md).
 
-
 For corpus provenance, schema, processing rules, and data-quality notes, see [`dataset-notes.md`](dataset-notes.md). For benchmark design, metrics, and evaluation findings, see [`evaluation-notes.md`](evaluation-notes.md). For reproducible setup and commands, see [`runbook.md`](runbook.md).
-
 
 ## Decision index
 
-
-| ID      | Decision                                                 | Status            | Date       |
-|---------|----------------------------------------------------------|-------------------|------------|
-| DEC-001 | Project scope                                            | Accepted          | 2026-07-27 |
-| DEC-002 | Core corpus selection                                    | Accepted          | 2026-07-27 |
-| DEC-003 | Product naming and ATT&CK references                     | Accepted          | 2026-07-27 |
-| DEC-004 | Public repository and attribution                        | Accepted          | 2026-07-30 |
-| DEC-005 | Repository structure                                     | Accepted          | 2026-07-29 |
-| DEC-006 | Execution convention                                     | Accepted          | 2026-07-29 |
-| DEC-007 | Source provenance and versioning                         | Accepted          | 2026-07-29 |
-| DEC-008 | Retrieval unit and chunking                              | Accepted          | 2026-07-29 |
-| DEC-009 | Processed corpus schema and snapshot policy              | Accepted          | 2026-07-30 |
-| DEC-010 | Database and embedding pipeline                          | Accepted          | 2026-07-29 |
-| DEC-011 | Embedding baseline                                       | Accepted baseline | 2026-07-30 |
-| DEC-012 | Vector index strategy                                    | Accepted          | 2026-07-30 |
-| DEC-013 | Documentation strategy                                   | Accepted          | 2026-07-30 |
-| DEC-014 | External evaluation benchmark strategy                   | Accepted          | 2026-07-30 |
-| DEC-015 | Default retrieval method for v1                          | Superseded        | 2026-07-31 |
-| DEC-016 | Retrieval-module refactor and shared helpers             | Accepted          | 2026-07-31 |
-| DEC-017 | Answer-generation pipeline and output contract           | Accepted baseline | 2026-07-31 |
-| DEC-018 | Default retrieval configuration with reranking           | Accepted          | 2026-08-12 |
+| ID      | Decision                                         | Status            | Date       |
+|---------|--------------------------------------------------|-------------------|------------|
+| DEC-001 | Project scope                                    | Accepted          | 2026-07-27 |
+| DEC-002 | Core corpus selection                            | Accepted          | 2026-07-27 |
+| DEC-003 | Product naming and ATT&CK references             | Accepted          | 2026-07-27 |
+| DEC-004 | Public repository and attribution                | Accepted          | 2026-07-30 |
+| DEC-005 | Repository structure                             | Accepted          | 2026-07-29 |
+| DEC-006 | Execution convention                             | Accepted          | 2026-07-29 |
+| DEC-007 | Source provenance and versioning                 | Accepted          | 2026-07-29 |
+| DEC-008 | Retrieval unit and chunking                      | Accepted          | 2026-07-29 |
+| DEC-009 | Processed corpus schema and snapshot policy      | Accepted          | 2026-07-30 |
+| DEC-010 | Database and embedding pipeline                  | Accepted          | 2026-07-29 |
+| DEC-011 | Embedding baseline                               | Accepted baseline | 2026-07-30 |
+| DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
+| DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy           | Accepted          | 2026-07-30 |
+| DEC-015 | Default retrieval method for v1                  | Superseded        | 2026-07-31 |
+| DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
+| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
+| DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
 | DEC-019 | User query rewriting evaluation and decision             | Accepted          | 2026-08-13 |
+| DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted          | 2026-08-13 |
 
 ---
 
@@ -749,17 +745,23 @@ Treat this pipeline and schema as an accepted baseline: it is suitable for early
 
 ---
 
+
 ## DEC-018 — Default retrieval configuration with reranking
+
 
 **Status:** Accepted  
 **Date:** 2026-08-12  
 **Supersedes:** DEC-015 for the default v1 retrieval configuration
 
+
 ### Context
+
 
 DEC-015 selected vector retrieval as the v1 default after comparing text, vector, and hybrid retrieval. At that time, hybrid retrieval produced only a marginal improvement over vector retrieval and did not justify the additional complexity.
 
+
 A local second-stage document reranking experiment has now been implemented and evaluated. The experiment uses:
+
 
 - First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`.
 - PostgreSQL with pgvector cosine-distance search over active Enterprise MITRE ATT&CK technique and sub-technique records.
@@ -768,9 +770,12 @@ A local second-stage document reranking experiment has now been implemented and 
 - Existing structured ATT&CK `embedding_text` as the reranker document text. This contains ATT&CK ID, technique name, tactics, platforms, and cleaned description.
 - Return of the top 10 reranked records for benchmark compatibility.
 
+
 The vector-only and vector-plus-reranking configurations were evaluated against the same current 226-case Expert-derived retrieval set.
 
+
 Results were:
+
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -781,6 +786,7 @@ Results were:
 | Hit@3 | 0.3540 | 0.4159 | +0.0619 |
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
+
 
 The reranked configuration improved every reported retrieval metric.
 
@@ -834,7 +840,9 @@ Keep vector-only retrieval available as a fallback option for future interface/r
 - Use an ONNX-optimised reranker implementation before selecting a default.
 - Defer reranking until after answer-generation evaluation is complete.
 
+
 ### Consequences
+
 
 - The selected default improves all reported metrics over vector-only retrieval on the current Expert-derived evaluation set.
 - The strongest observed improvement is in ordering quality: MRR increased from 0.3134 to 0.3578, while Hit@3 increased from 0.3540 to 0.4159.
@@ -935,3 +943,163 @@ Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimite
 - The project retains all three best-practice points: hybrid search (evaluated), document reranking (deployed), and user query rewriting (evaluated).
 - Future work can explore prompt engineering (few-shot examples, detail preservation), alternative embedding models, or hybrid retrieval strategies to close the gap between retrieval quality and latency.
 - The decision preserves the option to revisit query rewriting in a future decision record if conditions change (e.g., paid-tier LLM access, improved prompts, or different latency requirements).
+
+---
+
+## DEC-020 — Pairwise LLM-as-judge evaluation for answer generation
+
+**Status:** Accepted  
+**Date:** 2026‑08‑13  
+
+### Context
+
+DEC‑017 defines the structured answer‑generation pipeline and output contract for mapping incident narratives to MITRE ATT&CK techniques. It does not prescribe a specific LLM as the default answer‑generation model.
+
+To compare candidate models for this pipeline (in particular `gemini‑3.1‑flash‑lite` vs `gemini‑3.5‑flash‑lite`) on the existing 226‑case expert-derived dataset, the project needs an evaluation method that:
+
+- Works on the structured outputs defined in DEC‑017 (e.g. `answer_summary`, retrieved ATT&CK IDs).
+- Scales beyond what can be manually judged case‑by‑case.
+- Provides a clear signal about which model tends to produce better answers.
+- Still leaves room for targeted human review, especially where automated judges disagree.
+
+This decision introduces a pairwise LLM‑as‑judge evaluation setup to compare answer‑generation models, without yet committing to a final default model choice.
+
+### Decision
+
+Use a **pairwise LLM‑as‑judge evaluation** to compare answer‑generation models on the 226‑case expert dataset, with both `gemini‑3.1‑flash‑lite` and `gemini‑3.5‑flash‑lite` acting as judges.
+
+#### 1. Evaluation inputs
+
+For each of the 226 expert‑derived incident narratives:
+
+- Generate answers using the DEC‑017 pipeline with both candidate models:
+  - `gemini‑3.1‑flash‑lite`
+  - `gemini‑3.5‑flash‑lite`
+- For each model, record the structured fields from DEC‑017, in particular:
+  - `answer_summary`
+  - `retrieved_attack_ids`
+  - `llm_model`
+  - Any other metadata needed to reconstruct the comparison.
+
+These results are stored in:
+
+- `data/evaluation_reports/expert_answer_generation_v1.jsonl`
+- `data/evaluation_reports/expert_answer_generation_v1.csv`
+
+#### 2. Pairwise judge setup
+
+Define a pairwise LLM‑as‑judge protocol that:
+
+- **Prompt structure**
+  - Shows the judge:
+    - The incident narrative (`query_text`).
+    - Answer A: summary and retrieved technique IDs.
+    - Answer B: summary and retrieved technique IDs.
+  - Instructs the judge to compare along:
+    1. Technique relevance to the narrative.
+    2. Evidence grounding in the narrative text.
+    3. Uncertainty framing.
+    4. Actionability for an analyst.
+    5. Conciseness.
+  - Requires step‑by‑step reasoning and a structured JSON verdict:
+    - `reasoning`
+    - `winner`: `"A"` or `"B"`.
+    - `confidence`: `"low" | "medium" | "high"`.
+
+- **A/B randomisation**
+  - For each case, randomly assign model‑3.1 and model‑3.5 to Answer A or Answer B, to reduce position bias.
+  - Maintain a mapping from `"A"`/`"B"` back to the underlying model.
+
+- **Judges**
+  - Run the pairwise comparison twice for each case:
+    - Once with `gemini‑3.1‑flash‑lite` as judge.
+    - Once with `gemini‑3.5‑flash‑lite` as judge.
+  - Use `src.llm_client.generate_text_answer` for judge calls, relying on its built‑in retry/backoff behaviour.
+
+- **Outputs**
+  - For each judge, write one row per `eval_id` to:
+    - `data/evaluation_reports/expert_llm_judged_31_as_judge.csv`
+    - `data/evaluation_reports/expert_llm_judged_35_as_judge.csv`
+  - Each row includes:
+    - `eval_id`
+    - `judge_model`
+    - `winner` (mapped back to `gemini‑3.1‑flash‑lite` or `gemini‑3.5‑flash‑lite`)
+    - `reasoning`
+    - `confidence`
+    - Token usage metadata (prompt/completion/total, where available).
+
+Checkpointing is enabled so the process can resume without re‑judging completed cases.
+
+#### 3. Judge agreement analysis
+
+After both judge runs complete:
+
+- Aggregate the per‑judge CSVs to compute:
+
+  - **Total cases evaluated:** 226  
+  - **Agreement:** number of cases where 3.1‑as‑judge and 3.5‑as‑judge choose the same winner.  
+    - Current run: 169 / 226 (**74.78%**).
+  - **Disagreements:** cases where judges prefer different models.  
+    - Current run: 57 / 226 (**25.22%**).
+
+- Summarise preference distributions:
+
+  - **Judge 3.1‑as‑judge:**
+    - Prefers 3.1 output: 164 (72.57%).
+    - Prefers 3.5 output: 62 (27.43%).
+
+  - **Judge 3.5‑as‑judge:**
+    - Prefers 3.1 output: 149 (65.93%).
+    - Prefers 3.5 output: 77 (34.07%).
+
+- Persist agreement artefacts:
+
+  - `data/evaluation_reports/judge_agreement_summary.csv`  
+    (aggregated counts, rates, and preference summary).
+  - `data/evaluation_reports/judge_disagreements.csv`  
+    (the 57 disagreement cases, with model and judge decisions).
+
+These artefacts are used by the Streamlit monitoring dashboard (e.g. for the “Judge Agreement Rate” and “Judge Preferences” charts) and by later manual review.
+
+#### 4. Human review plan (deferred)
+
+This decision **establishes the automated evaluation method and current agreement results**, but deliberately **defers** a final model choice until a small amount of manual inspection is completed.
+
+Planned follow‑up (to be captured in a later decision, e.g. DEC‑021):
+
+- Focus manual review on `judge_disagreements.csv`:
+  - Draw a small, documented sample (e.g. 15–20 cases).
+  - For each sampled `eval_id`, inspect:
+    - Narrative vs each model’s `answer_summary` and retrieved IDs.
+    - Obvious plausibility, narrative alignment, and clear failures.
+- Use this to:
+  - Check that judge preferences are broadly reasonable.
+  - Identify any systematic failure modes (e.g. one model more prone to off‑topic or over‑confident answers).
+  - Inform the final choice of default answer‑generation model and any prompt adjustments.
+
+Until that follow‑up is complete, no change is made to the default model selection; DEC‑020 only defines **how** models are compared and reports the current automated evidence.
+
+### Alternatives considered
+
+- **Single judge model only.**  
+  Using just one judge (e.g. 3.5‑as‑judge) would be simpler, but would hide judge bias and make it harder to assess reliability. Using both 3.1 and 3.5 as judges plus agreement analysis provides a clearer picture.
+
+- **Human‑only evaluation.**  
+  Relying purely on expert human comparisons for all 226 cases would be higher fidelity but impractical in the project timeframe.
+
+- **No answer‑level evaluation.**  
+  Evaluating only the retrieval layer would ignore how models reason over retrieved evidence, missing important differences in grounding, uncertainty handling, and usefulness.
+
+- **Token‑level or rubric‑only scoring.**  
+  Scoring each answer independently against a rubric was considered, but pairwise judging is more efficient for relative model comparison and easier to operationalise with LLM judges.
+
+### Consequences
+
+- The project now has a **repeatable, tool‑driven** method to compare answer‑generation models on the existing 226‑case dataset, aligned with the DEC‑017 output contract.
+- Cross‑judge evaluation and agreement analysis:
+  - Provide a quantitative signal about how often different judges agree (~75% in the current run).
+  - Reveal a consistent tendency for both judges to prefer `gemini‑3.1‑flash‑lite` outputs on this dataset, without yet treating that as a final deployment decision.
+- The disagreement slice (57 cases) defines a **focused target** for later human inspection, making manual effort tractable and avoiding over‑reliance on LLM judges.
+- This decision does **not** change the current default answer‑generation model. A future decision (e.g. DEC‑021) will:
+  - Combine these automated results with targeted manual review.
+  - Decide whether to keep 3.1 as default, move to 3.5, or use a different configuration.
