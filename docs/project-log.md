@@ -647,6 +647,162 @@ This decision is recorded in DEC-018. It supersedes DEC-015 only for the default
 
 Implement and evaluate one constrained user-query rewriting configuration against the selected vector-plus-reranking baseline, while preserving the original incident narrative and timeboxing the experiment to avoid delaying the Streamlit interface, answer-model evaluation, monitoring, and reproducibility work.
 
+---
+
+
+## 2026-08-13 — User query rewriting evaluation and decision
+
+### Stage
+
+Retrieval refinement, LLM-based query rewriting, benchmark comparison, and retrieval-default confirmation.
+
+### Goal
+
+Evaluate whether LLM-based user query rewriting improves retrieval quality enough to justify the additional latency and API dependency, and decide whether to adopt it as the default v1 configuration.
+
+### What was done
+
+- Implemented `src/retrieval/query_rewriter.py` with:
+  - Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) via OpenAI-compatible API,
+  - Prompt instructions directing the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative,
+  - Local JSON caching of rewritten queries to avoid redundant API calls during development.
+- Implemented `src/retrieval/rewritten_reranked_vector.py` for end-to-end rewritten query retrieval with reranking.
+- Added optional rate limiting in `src/llm_client.py` with a `RateLimiter` class that can be enabled for batch tasks and disabled for interactive use.
+- Implemented `src/evaluation/run_expert_query_rewrite_retrieval_benchmark.py` with:
+  - `--no-rate-limit` flag for disabling client-side rate limiting,
+  - Timing fields for query rewriting, embedding, vector search, reranking, and total retrieval.
+- Ran a 5-query smoke test successfully.
+- Ran the full query-rewrite benchmark over all 226 current Expert-derived evaluation cases with rate limiting at 15 requests/minute.
+- Compared results against the DEC-018 vector-plus-reranking baseline.
+- Added DEC-019 to `docs/decisions.md` documenting the evaluation and decision.
+
+### What was learned
+
+- Query rewriting improved all reported retrieval metrics over the DEC-018 baseline:
+
+| Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
+|---|---:|---:|---:|
+| Recall@1 | 0.1462 | 0.1495 | +0.0033 |
+| Recall@3 | 0.2526 | 0.2966 | +0.0440 |
+| Recall@5 | 0.3104 | 0.3507 | +0.0403 |
+| Recall@10 | 0.3866 | 0.4581 | +0.0715 |
+| Hit@3 | 0.4159 | 0.4690 | +0.0531 |
+| Hit@10 | 0.5973 | 0.6726 | +0.0753 |
+| MRR | 0.3578 | 0.3940 | +0.0362 |
+
+- Query rewriting is the dominant source of retrieval latency:
+  - Median total retrieval time: 4,362.28 ms (vs ~1,255 ms for vector + rerank).
+  - P95 total retrieval time: 12,202.92 ms.
+  - Median query-rewrite time: 3,183.88 ms.
+  - P95 query-rewrite time: 10,954.94 ms.
+- The latency penalty (~3.1 seconds median, up to 11 seconds at P95) is unacceptable for interactive analyst-assist workflows despite the retrieval-quality improvement.
+- Rate limiting at 15 requests/minute worked as expected, with 226 queries completing in approximately 15 minutes of wall-clock time.
+- The implementation satisfies the "user query rewriting" best-practice criterion (evaluated, even if not deployed).
+
+### Decision made
+
+**Do not adopt user query rewriting as the default retrieval configuration for version 1.**
+
+Retain **vector retrieval plus local cross-encoder reranking** (DEC-018) as the default v1 configuration.
+
+Document query rewriting as an evaluated retrieval enhancement that improved metrics but introduced unacceptable latency for the initial analyst-assist workflow. Keep the implementation available for future re-evaluation under the following conditions:
+
+- Access to lower-latency LLM endpoints (e.g., paid-tier Gemini with higher RPM limits, or self-hosted models).
+- Prompt-engineering improvements that reduce rewrite latency while preserving quality.
+- Embedding models fine-tuned for ATT&CK-specific query-document matching that may reduce reliance on query rewriting.
+- Hybrid approaches that combine raw narrative retrieval with rewritten-query retrieval.
+
+This decision is recorded in DEC-019.
+
+### Problems or uncertainties
+
+- The current 226-case Expert-derived evaluation file contains development- and test-derived records. It is useful for implementation comparison, but it is not yet a frozen held-out external benchmark.
+- The query-rewriting prompt was not optimised with few-shot examples or detail-preservation enhancements; alternative prompts may yield different quality-latency trade-offs.
+- The evaluation used Gemini 3.1 Flash Lite; alternative models (e.g., Gemini 2.5 Flash, Gemini 2.5 Pro) may have different latency and instruction-following characteristics.
+- The implementation adds an external API dependency (Gemini) that was not previously required for retrieval.
+- Future work can explore hybrid retrieval combining candidates from both raw narratives and rewritten queries.
+
+### Next step
+
+Proceed with Streamlit interface implementation using the vector-plus-reranking default, while retaining the query-rewriting code for future optimisation or re-evaluation.
+
+---
+
+## 2026-08-13 — Pairwise LLM-as-judge evaluation for answer generation
+
+### Stage
+
+Evaluation design and model comparison.
+
+### Goal
+
+Introduce and run a scalable, repeatable evaluation method to compare answer‑generation models (`gemini‑3.1‑flash‑lite` vs `gemini‑3.5‑flash‑lite`) on the existing 226‑case expert‑derived dataset, without relying solely on manual expert judgement.
+
+### What was done
+
+- Used the DEC‑017 answer‑generation pipeline to produce structured answers for 226 expert‑derived incident narratives with two models:
+  - `gemini‑3.1‑flash‑lite`
+  - `gemini‑3.5‑flash‑lite`
+- Implemented `src.evaluation.run_llm_judge_pairwise` to perform **pairwise LLM‑as‑judge** evaluation:
+  - For each case, randomly assigned the two model outputs to “Answer A” and “Answer B” to reduce position bias.
+  - Constructed a judge prompt showing the incident narrative, each answer’s summary, and retrieved ATT&CK IDs.
+  - Asked the judge to compare answers on technique relevance, evidence grounding, uncertainty framing, actionability, and conciseness.
+  - Required step‑by‑step reasoning and a JSON verdict with `reasoning`, `winner` (`"A"` or `"B"`), and `confidence`.
+- Ran the pairwise judge twice per case:
+  - Once with `gemini‑3.1‑flash‑lite` as judge.
+  - Once with `gemini‑3.5‑flash‑lite` as judge.
+- Updated `run_llm_judge_pairwise.py` to use the project’s `src.llm_client.generate_text_answer` helper (with built‑in retry/backoff) and removed the legacy `RateLimiter` dependency.
+- Enabled checkpointing in the judge script so partially‑completed runs can resume without rejudging finished cases.
+- Saved per‑judge outputs to:
+  - `data/evaluation_reports/expert_llm_judged_31_as_judge.csv`
+  - `data/evaluation_reports/expert_llm_judged_35_as_judge.csv`
+- Implemented and ran `src.evaluation.analyze_judge_agreement` to:
+  - Compare winners from both judges per `eval_id`.
+  - Compute agreement and preference statistics.
+  - Write summary metrics to `data/evaluation_reports/judge_agreement_summary.csv`.
+  - Write the subset of disagreement cases to `data/evaluation_reports/judge_disagreements.csv`.
+
+### What was learned
+
+- The pairwise judge scripts successfully evaluated all 226 cases for both judge models, despite free‑tier rate limits (handled by retries and backoff).
+- Cross‑judge agreement is substantial but not perfect:
+  - Total cases: 226
+  - Agreement: 169 / 226 (**74.78%**)
+  - Disagreement: 57 / 226 (**25.22%**)
+- Both judges tend to prefer `gemini‑3.1‑flash‑lite` answers on this dataset:
+  - **Judge 3.1‑as‑judge:**
+    - Prefers 3.1 outputs: 164 (72.57%)
+    - Prefers 3.5 outputs: 62 (27.43%)
+  - **Judge 3.5‑as‑judge:**
+    - Prefers 3.1 outputs: 149 (65.93%)
+    - Prefers 3.5 outputs: 77 (34.07%)
+- The disagreement set of 57 cases is a manageable target for later manual inspection, rather than attempting to manually review all 226 narratives.
+- The generated CSVs integrate cleanly with the Streamlit monitoring dashboard, enabling:
+  - A “Judge agreement rate” visual.
+  - Preference breakdown charts for each judge model.
+
+### Decision made
+
+- **Adopt pairwise LLM‑as‑judge evaluation as the standard automated method** for comparing answer‑generation models on the current 226‑case expert‑derived dataset:
+  - Use both `gemini‑3.1‑flash‑lite` and `gemini‑3.5‑flash‑lite` as judges.
+  - Randomise answer order and require structured JSON verdicts.
+  - Persist per‑judge outputs and an agreement summary as described above.
+- **Treat the 57 disagreement cases as the primary pool for future human inspection**, to be sampled and reviewed later once documentation and interface work are further along.
+- **Defer any change to the default answer‑generation model** until:
+  - A small, documented manual review of disagreement cases is completed.
+  - Findings are summarised in a dedicated decision record on model choice (e.g. DEC‑020).
+
+### Problems or uncertainties
+
+- LLM judges themselves are not ground truth and show a consistent bias towards `gemini‑3.1‑flash‑lite`; agreement analysis quantifies this but does not eliminate it.
+- The 226‑case expert‑derived dataset is useful for internal comparison but is not yet a fully frozen, held‑out benchmark.
+- Manual review of disagreement cases is still outstanding; without it, model‑preference numbers should be treated as advisory rather than definitive evidence for deployment.
+- Free‑tier rate limits for Gemini models introduce long‑running evaluation jobs; further runs may need lower limits or scheduled execution.
+
+### Next step
+
+- Document DEC‑019 (pairwise LLM‑as‑judge evaluation) in `docs/decisions.md` and link it from `evaluation-notes.md`.
+- Later, when time allows, draw a small sample of disagreement cases from `data/evaluation_reports/judge_disagreements.csv` for manual inspection and record the findings in a follow‑on decision about default model selection.
 
 ---
 

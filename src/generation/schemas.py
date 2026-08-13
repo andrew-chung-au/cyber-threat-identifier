@@ -55,3 +55,9 @@ class GeneratedAnswer(BaseModel):
         ...,
         description="Whether a human analyst should explicitly review the answer before using it.",
     )
+
+class QueryRewrite(BaseModel):
+    rewritten_query: str = Field(
+        ...,
+        description="Concise ATT&CK-oriented retrieval query rewritten from the original narrative.",
+    )
