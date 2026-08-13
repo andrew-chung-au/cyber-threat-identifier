@@ -13,4 +13,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "sentence-transformers>=5.6.1",
     "torch>=2.0",
+    "streamlit>=1.40.0",
+    "plotly>=6.0.0",
+    "matplotlib>=3.10.0",
 ]
