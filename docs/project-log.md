@@ -529,27 +529,15 @@ Adopt the refactored retrieval and evaluation structure as the new baseline:
 
 ## 2026-08-12 — Local document reranking implementation and evaluation
 
-
-
 ### Stage
-
-
 
 Retrieval refinement, document reranking, benchmark comparison, and retrieval-default selection.
 
-
-
 ### Goal
-
-
 
 Implement a genuine second-stage document reranking pipeline over the existing vector retrieval backend; measure whether it improves ATT&CK technique ranking quality enough to justify additional local CPU latency and complexity.
 
-
-
 ### What was done
-
-
 
 - Resumed the local PostgreSQL and pgvector environment using Docker Compose.
 - Confirmed that the existing `techniques` table contains structured `embedding_text` for every ATT&CK technique or sub-technique record.
@@ -586,18 +574,12 @@ Implement a genuine second-stage document reranking pipeline over the existing v
 - Re-ran the existing vector-only benchmark over the same 226 cases with `top_k=10` for a direct comparison.
 - Added DEC-018 to `docs/decisions.md`, superseding DEC-015 for the selected v1 retrieval configuration.
 
-
-
 ### What was learned
-
-
 
 - The existing `embedding_text` field is suitable for cross-encoder reranking because it already combines ATT&CK ID, technique name, tactics, platforms, and cleaned description.
 - No additional chunking, database schema migration, or separate reranker document-construction pipeline was required.
 - The local cross-encoder successfully reranked the top 20 vector candidates on CPU without API cost or provider dependency during retrieval.
 - Vector-plus-reranking improved every reported metric compared with vector-only retrieval on the current 226-case Expert-derived evaluation set.
-
-
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -608,8 +590,6 @@ Implement a genuine second-stage document reranking pipeline over the existing v
 | Hit@3 | 0.3540 | 0.4159 | +0.0619 |
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
-
-
 
 - The ranking improvement is most useful at the top of the returned list:
   - Hit@3 increased from 0.3540 to 0.4159.
@@ -624,31 +604,17 @@ Implement a genuine second-stage document reranking pipeline over the existing v
 - The Hugging Face unauthenticated-request warning did not block model download or execution. The reranker and embedding models are now cached locally.
 - ONNX optimisation remains unnecessary for the assessed implementation. It can be revisited later as a deployment or performance optimisation after the project is complete.
 
-
-
 ### Decision made
-
-
 
 Adopt **vector retrieval plus local cross-encoder document reranking** as the selected default retrieval configuration for version 1.
 
-
-
 The selected configuration retrieves the top 20 vector candidates and reranks them using `cross-encoder/ms-marco-MiniLM-L-6-v2` running locally on CPU.
-
-
 
 Keep vector-only, text-only, and hybrid retrieval available as implemented baselines and diagnostic modes.
 
-
-
 This decision is recorded in DEC-018. It supersedes DEC-015 only for the default retrieval configuration.
 
-
-
 ### Problems or uncertainties
-
-
 
 - The current 226-case Expert-derived evaluation file contains development- and test-derived records. It is useful for implementation comparison, but it is not yet a frozen held-out external benchmark.
 - The current result must not be described as final held-out performance or as evidence of production readiness.
@@ -658,36 +624,23 @@ This decision is recorded in DEC-018. It supersedes DEC-015 only for the default
 - The future Streamlit runtime path still needs a safe fallback: if the reranker model is unavailable, the interface should show vector-only ordering and clearly indicate that fallback mode.
 - External-data redistribution policy still needs to be respected. CSV benchmark reports containing external `query_text` should not be committed publicly unless the provenance and redistribution position is confirmed.
 
-
-
 ### Next step
-
-
 
 Implement and evaluate one constrained user-query rewriting configuration against the selected vector-plus-reranking baseline, while preserving the original incident narrative and timeboxing the experiment to avoid delaying the Streamlit interface, answer-model evaluation, monitoring, and reproducibility work.
 
-
 ---
-
-
 
 ## 2026-08-13 — User query rewriting evaluation and decision
 
-
 ### Stage
-
 
 Retrieval refinement, LLM-based query rewriting, benchmark comparison, and retrieval-default confirmation.
 
-
 ### Goal
-
 
 Evaluate whether LLM-based user query rewriting improves retrieval quality enough to justify the additional latency and API dependency, and decide whether to adopt it as the default v1 configuration.
 
-
 ### What was done
-
 
 - Implemented `src/retrieval/query_rewriter.py` with:
   - Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) via OpenAI-compatible API,
@@ -703,12 +656,9 @@ Evaluate whether LLM-based user query rewriting improves retrieval quality enoug
 - Compared results against the DEC-018 vector-plus-reranking baseline.
 - Added DEC-019 to `docs/decisions.md` documenting the evaluation and decision.
 
-
 ### What was learned
 
-
 - Query rewriting improved all reported retrieval metrics over the DEC-018 baseline:
-
 
 | Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
 |---|---:|---:|---:|
@@ -720,7 +670,6 @@ Evaluate whether LLM-based user query rewriting improves retrieval quality enoug
 | Hit@10 | 0.5973 | 0.6726 | +0.0753 |
 | MRR | 0.3578 | 0.3940 | +0.0362 |
 
-
 - Query rewriting is the dominant source of retrieval latency:
   - Median total retrieval time: 4,362.28 ms (vs ~1,255 ms for vector + rerank).
   - P95 total retrieval time: 12,202.92 ms.
@@ -730,30 +679,22 @@ Evaluate whether LLM-based user query rewriting improves retrieval quality enoug
 - Rate limiting at 15 requests/minute worked as expected, with 226 queries completing in approximately 15 minutes of wall-clock time.
 - The implementation satisfies the "user query rewriting" best-practice criterion (evaluated, even if not deployed).
 
-
 ### Decision made
-
 
 **Do not adopt user query rewriting as the default retrieval configuration for version 1.**
 
-
 Retain **vector retrieval plus local cross-encoder reranking** (DEC-018) as the default v1 configuration.
 
-
 Document query rewriting as an evaluated retrieval enhancement that improved metrics but introduced unacceptable latency for the initial analyst-assist workflow. Keep the implementation available for future re-evaluation under the following conditions:
-
 
 - Access to lower-latency LLM endpoints (e.g., paid-tier Gemini with higher RPM limits, or self-hosted models).
 - Prompt-engineering improvements that reduce rewrite latency while preserving quality.
 - Embedding models fine-tuned for ATT&CK-specific query-document matching that may reduce reliance on query rewriting.
 - Hybrid approaches that combine raw narrative retrieval with rewritten-query retrieval.
 
-
 This decision is recorded in DEC-019.
 
-
 ### Problems or uncertainties
-
 
 - The current 226-case Expert-derived evaluation file contains development- and test-derived records. It is useful for implementation comparison, but it is not yet a frozen held-out external benchmark.
 - The query-rewriting prompt was not optimised with few-shot examples or detail-preservation enhancements; alternative prompts may yield different quality-latency trade-offs.
@@ -761,33 +702,23 @@ This decision is recorded in DEC-019.
 - The implementation adds an external API dependency (Gemini) that was not previously required for retrieval.
 - Future work can explore hybrid retrieval combining candidates from both raw narratives and rewritten queries.
 
-
 ### Next step
-
 
 Proceed with Streamlit interface implementation using the vector-plus-reranking default, while retaining the query-rewriting code for future optimisation or re-evaluation.
 
-
 ---
 
-
-## 2026-08-13 — Pairwise LLM-as-judge evaluation for answer generation
-
+## 2026-08-13 — Pairwise LLM-as-judge evaluation for answer generation (revised)
 
 ### Stage
 
-
 Evaluation design and model comparison.
-
 
 ### Goal
 
-
 Introduce and run a scalable, repeatable evaluation method to compare answer‑generation models (`gemini‑3.1‑flash‑lite` vs `gemini‑3.5‑flash‑lite`) on the existing 226‑case expert‑derived dataset, without relying solely on manual expert judgement.
 
-
 ### What was done
-
 
 - Used the DEC‑017 answer‑generation pipeline to produce structured answers for 226 expert‑derived incident narratives with two models:
   - `gemini‑3.1‑flash‑lite`
@@ -811,198 +742,394 @@ Introduce and run a scalable, repeatable evaluation method to compare answer‑g
   - Write summary metrics to `data/evaluation_reports/judge_agreement_summary.csv`.
   - Write the subset of disagreement cases to `data/evaluation_reports/judge_disagreements.csv`.
 
-
 ### What was learned
-
 
 - The pairwise judge scripts successfully evaluated all 226 cases for both judge models, despite free‑tier rate limits (handled by retries and backoff).
 - Cross‑judge agreement is substantial but not perfect:
   - Total cases: 226
-  - Agreement: 169 / 226 (**74.78%**)
-  - Disagreement: 57 / 226 (**25.22%**)
+  - Agreement: 171 / 226 (**75.66%**)
+  - Disagreement: 55 / 226 (**24.34%**)
 - Both judges tend to prefer `gemini‑3.1‑flash‑lite` answers on this dataset:
   - **Judge 3.1‑as‑judge:**
-    - Prefers 3.1 outputs: 164 (72.57%)
-    - Prefers 3.5 outputs: 62 (27.43%)
+    - Prefers 3.1 outputs: 153 (67.70%)
+    - Prefers 3.5 outputs: 73 (32.30%)
   - **Judge 3.5‑as‑judge:**
-    - Prefers 3.1 outputs: 149 (65.93%)
-    - Prefers 3.5 outputs: 77 (34.07%)
-- The disagreement set of 57 cases is a manageable target for later manual inspection, rather than attempting to manually review all 226 narratives.
+    - Prefers 3.1 outputs: 142 (62.83%)
+    - Prefers 3.5 outputs: 84 (37.17%)
+- The disagreement set of 55 cases is a manageable target for later manual inspection, rather than attempting to manually review all 226 narratives.
 - The generated CSVs integrate cleanly with the Streamlit monitoring dashboard, enabling:
   - A "Judge agreement rate" visual.
   - Preference breakdown charts for each judge model.
 
-
 ### Decision made
-
 
 - **Adopt pairwise LLM‑as‑judge evaluation as the standard automated method** for comparing answer‑generation models on the current 226‑case expert‑derived dataset:
   - Use both `gemini‑3.1‑flash‑lite` and `gemini‑3.5‑flash‑lite` as judges.
   - Randomise answer order and require structured JSON verdicts.
   - Persist per‑judge outputs and an agreement summary as described above.
-- **Treat the 57 disagreement cases as the primary pool for future human inspection**, to be sampled and reviewed later once documentation and interface work are further along.
+- **Treat the 55 disagreement cases as the primary pool for future human inspection**, to be sampled and reviewed later once documentation and interface work are further along.
 - **Defer any change to the default answer‑generation model** until:
   - A small, documented manual review of disagreement cases is completed.
-  - Findings are summarised in a dedicated decision record on model choice (e.g. DEC‑020).
-
+  - Findings are summarised in a dedicated decision record on model choice (e.g. DEC‑021).
 
 ### Problems or uncertainties
-
 
 - LLM judges themselves are not ground truth and show a consistent bias towards `gemini‑3.1‑flash‑lite`; agreement analysis quantifies this but does not eliminate it.
 - The 226‑case expert‑derived dataset is useful for internal comparison but is not yet a fully frozen, held‑out benchmark.
 - Manual review of disagreement cases is still outstanding; without it, model‑preference numbers should be treated as advisory rather than definitive evidence for deployment.
 - Free‑tier rate limits for Gemini models introduce long‑running evaluation jobs; further runs may need lower limits or scheduled execution.
 
-
 ### Next step
-
 
 - Document the pairwise LLM‑as‑judge evaluation and model-comparison findings in DEC‑020 in `docs/decisions.md`.
 - Implement the Streamlit interface and integrate the judge outputs and agreement metrics into the monitoring dashboard.
 
-
 ---
-
 
 ## 2026-08-13 — Streamlit UI implementation and monitoring dashboard
 
-
 ### Stage
-
 
 Interface implementation, monitoring, and integration with evaluation outputs.
 
-
 ### Goal
 
-
-Provide an interactive Streamlit interface for security practitioners to map incident narratives to ATT&CK techniques, and a monitoring dashboard for evaluators to inspect retrieval and answer-generation metrics.
-
+Provide an interactive Streamlit interface for security practitioners to map incident narratives to ATT&CK techniques, inspect retrieved evidence, submit feedback, and review evaluation metrics.
 
 ### What was done
 
-
-- Implemented `app/home.py` as the main entry point with:
-  - A sidebar describing the tool and system info.
-  - Tabs for Home, Query, and Dashboard.
-- Implemented `app/query.py` as the incident → ATT&CK mapping interface:
-  - Text area for incident narrative input.
-  - Optional sample queries loaded from evaluation CSVs.
-  - Vector retrieval with reranking and structured answer generation.
-  - Retrieved techniques displayed in expandable sections with ID, name, description, and scores.
-  - Feedback buttons (thumbs up/down) as a UI prototype.
-- Implemented `app/dashboard.py` as a monitoring dashboard with five charts:
+- Implemented `app/home.py` as the main Streamlit entry point.
+- Added four application tabs:
+  - Home.
+  - Query.
+  - Dashboard.
+  - Evaluation Review.
+- Implemented `app/query.py` as the incident-to-ATT&CK mapping interface:
+  - Incident-narrative text input.
+  - Optional sample queries loaded from the query-rewrite benchmark output.
+  - Vector retrieval with local cross-encoder reranking.
+  - Top 20 vector candidates followed by a top 5 reranked context.
+  - Structured answer generation using the configured `MODEL_ID`.
+  - Display of the generated answer summary.
+  - Expandable retrieval-grounding and uncertainty notes.
+  - Expandable retrieved-technique records.
+  - Helpful / Not helpful feedback controls.
+- Added feedback persistence through `src.monitoring.feedback_store.save_feedback`.
+- Feedback records include:
+  - Query ID.
+  - Feedback type.
+  - Configured model ID.
+  - Original query text.
+  - Generated structured answer.
+  - Retrieved ATT&CK technique IDs.
+- Updated `app/dashboard.py` to display:
   - Answer-generation latency distribution.
-  - Judge preferences (3.5 Flash-Lite as judge).
-  - Retrieval method comparison (MRR & Hit@3).
-  - Judge agreement rate.
-  - User feedback distribution (placeholder until feedback persistence is implemented).
-- Added `Makefile` targets:
-  - `make app` to run the main Streamlit app.
-  - `make dashboard` to run the dashboard standalone.
-  - `make docker-up` and `make docker-down` for containerised deployment.
-- Added `app/Dockerfile` and updated `compose.yaml` to run Streamlit alongside PostgreSQL.
-- Added `.streamlit/config.toml` to configure Streamlit runner and server behaviour.
-- Updated `.env.example` with `STREAMLIT_PORT` and aligned environment documentation.
-- Integrated dashboard charts with existing evaluation CSVs:
-  - `expert_llm_comparison_v1.csv`
-  - `expert_llm_judged_35_as_judge.csv`
-  - `judge_agreement_summary.csv`
-- Ran smoke tests to confirm the UI loads and can execute queries against the local database.
+  - Preferences recorded by the Gemini 3.5 Flash-Lite judge.
+  - Preferences recorded by the Gemini 3.1 Flash-Lite judge.
+  - Retrieval-method comparison for vector, vector-plus-reranking, and query-rewrite-plus-reranking.
+  - Cross-judge agreement rate.
+  - User feedback distribution from `data/feedback/feedback.csv`.
+- Implemented `app/evaluation.py` as a manual-review workflow for:
+  - Reranked v1 disagreement cases.
+  - Vector-only baseline disagreement cases.
+- Added `app/Dockerfile` to build a Streamlit application image and run:
 
+  ```text
+  streamlit run app/home.py
+  ```
+
+- Updated the main app to expose the Evaluation Review workflow alongside the Query and Dashboard views.
+- Ran Streamlit smoke tests against the local database and evaluation artefacts.
 
 ### What was learned
 
-
-- The Streamlit interface provides a practical way for analysts to interact with the system without running CLI scripts.
-- The monitoring dashboard successfully visualises key evaluation metrics, including latency, judge preferences, and agreement rates.
-- Feedback buttons are currently a UI prototype; persistence to `data/feedback/feedback.csv` is not yet implemented.
-- The dashboard assumes evaluation reports exist; if files are missing, it displays informative error messages.
-- The UI architecture (tabs, modular pages) makes it easy to add new views (e.g., detailed case inspection, retrieval diagnostics) in future iterations.
-
+- The Streamlit interface now covers both analyst interaction and evaluation review rather than only query demonstration.
+- The dashboard must show both reciprocal judges because pairwise evaluation uses Gemini 3.1 Flash-Lite and Gemini 3.5 Flash-Lite as judges.
+- Feedback persistence is implemented; an empty feedback chart means that no feedback rows have yet been submitted, not that persistence is unavailable.
+- The retrieval-comparison chart currently uses the documented DEC-018 and DEC-019 benchmark values directly in `app/dashboard.py`. This is intentional for the current monitoring view; the chart is not currently loaded dynamically from retrieval benchmark CSVs.
+- The Query tab is configured through `MODEL_ID` and does not hard-code Gemini 3.5 Flash-Lite as the runtime fallback.
+- The Evaluation Review tab can reveal judge identities and judge reasoning only after a blinded manual decision is saved.
+- The Streamlit file watcher may emit optional `torchvision` import warnings while inspecting `transformers` modules. Running Streamlit with `--server.fileWatcherType=none` avoids the noisy watcher behaviour without changing retrieval or evaluation results.
+- The application Dockerfile is separate from the PostgreSQL service configuration and requires database and LLM environment variables at runtime.
 
 ### Decision made
 
-
-- **Adopt the Streamlit UI as the primary user interface** for v1 analyst-assist workflows.
-- **Use the monitoring dashboard** to visualise evaluation metrics and support future manual review of disagreement cases.
-- **Retain the query-rewriting and retrieval code** for future integration into the UI once latency or caching strategies are improved.
-
+- Adopt the four-tab Streamlit application as the primary v1 interface.
+- Use vector retrieval plus local cross-encoder reranking for the Query workflow.
+- Show both judge preference charts and the cross-judge agreement chart in the monitoring dashboard.
+- Use persisted feedback as an evaluation artefact for future analysis.
+- Use the Evaluation Review tab as the standard interface for manual adjudication of judge-disagreement cases.
 
 ### Problems or uncertainties
 
-
-- Feedback persistence is not yet implemented; the dashboard's feedback chart will show "No feedback collected yet" until this is added.
-- The dashboard's retrieval-comparison chart currently uses hard-coded metrics rather than dynamically reading from benchmark CSVs.
-- The UI sidebar currently states "Gemini 3.5 Flash-Lite" as the model, but the actual model is environment-configured via `MODEL_ID`; this should be clarified to avoid confusion.
-- The Dockerfile entry point currently references `app/app.py`, which does not exist; it should be updated to `app/home.py`.
-- The Makefile `dashboard` target references `app/pages/1_dashboard.py`, which was moved to `app/dashboard.py`; this should be updated.
-
+- The dashboard retrieval-comparison values remain manually defined from the documented benchmark results and should be updated when the accepted benchmark baseline changes.
+- Feedback volume is currently limited and should not be treated as a representative measure of answer quality.
+- The application Dockerfile installs the Streamlit and runtime dependencies, but full production deployment configuration, secret management, and service networking remain outside the current scope.
+- The current Streamlit image may require additional dependency alignment if the locked project environment changes.
+- The optional vector-only fallback path should remain explicit if the reranker cannot load; benchmark runs must not silently report fallback results as reranked results.
 
 ### Next step
 
-
-- Fix the Dockerfile entry point and Makefile dashboard target to reference the correct files.
-- Clarify the UI sidebar to indicate that the model is configured via `MODEL_ID`.
-- Implement feedback persistence so that thumbs up/down submissions are written to `data/feedback/feedback.csv`.
-- Update the dashboard's retrieval-comparison chart to read metrics dynamically from benchmark CSVs.
-
+Complete the reranked answer-generation comparison, reciprocal judge evaluation, and blinded manual review, then update DEC-020, DEC-021, and the evaluation documentation with the final evidence.
 
 ---
 
-
-## Template for future entries
-
-
-## YYYY-MM-DD — Short stage title
-
+## 2026-08-16 — Reranked answer-generation evaluation and manual review
 
 ### Stage
 
-
-Ingestion / corpus design / database / retrieval / generation / evaluation / interface / monitoring / documentation.
-
+Answer-generation evaluation, reciprocal LLM judging, manual adjudication, and monitoring integration.
 
 ### Goal
 
-
-What is the target outcome for this stage?
-
+Compare Gemini 3.1 Flash-Lite and Gemini 3.5 Flash-Lite under the selected v1 retrieval pipeline, review all judge-disagreement cases, and use the results to select the default answer-generation model.
 
 ### What was done
 
+- Ran `src.evaluation.run_expert_llm_comparison_reranked` using:
+  - Top 20 vector candidates.
+  - Local CPU cross-encoder reranking.
+  - Top 5 reranked ATT&CK records for answer-generation context.
+- Generated structured answers for:
+  - `gemini-3.1-flash-lite`.
+  - `gemini-3.5-flash-lite`.
+- Wrote the comparison output to:
 
-- Action completed.
-- Action completed.
-- Action completed.
+  ```text
+  data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
+  ```
 
+- Completed answer generation for all 226 evaluation cases.
+- Ran reciprocal pairwise LLM judging:
+  - Gemini 3.1 Flash-Lite as judge.
+  - Gemini 3.5 Flash-Lite as judge.
+- Used randomised Answer A / Answer B presentation so that the underlying model identity was not tied to a fixed display position.
+- Used checkpointing and retry/backoff to continue through Gemini free-tier rate limits.
+- Wrote judge outputs to:
+
+  ```text
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv
+  ```
+
+- Ran `src.evaluation.analyze_judge_agreement`.
+- Wrote agreement artefacts to:
+
+  ```text
+  data/evaluation_reports/reranked/judge_agreement_summary.csv
+  data/evaluation_reports/reranked/judge_disagreements.csv
+  ```
+
+- Built the reranked manual-review queue with `src.evaluation.build_manual_review_queue`.
+- Used `app/evaluation.py` to:
+  - Display the incident narrative.
+  - Display expected ATT&CK labels and definitions.
+  - Display retrieved ATT&CK context.
+  - Present blinded Answer A and Answer B.
+  - Collect Answer A, Answer B, or Tie.
+  - Collect optional failure-mode tags.
+  - Collect optional review notes.
+  - Reveal model identities and judge reasoning after saving.
+- Manually reviewed all 55 reranked judge-disagreement cases.
+- Wrote manual-review results to:
+
+  ```text
+  data/evaluation_reports/reranked/manual_review_results.csv
+  ```
+
+- Ran `src.evaluation.summarize_manual_review` to aggregate the manual decisions.
+- Retained the separate vector-only baseline review as diagnostic evidence:
+
+  ```text
+  data/evaluation_reports/vector/manual_review_results.csv
+  ```
 
 ### What was learned
 
+The reranked reciprocal judge evaluation produced:
+
+| Measure | Result |
+|---|---:|
+| Cases evaluated | 226 |
+| Cross-judge agreement | 171 / 226 |
+| Cross-judge agreement rate | 75.66% |
+| Cross-judge disagreements | 55 / 226 |
+| Cross-judge disagreement rate | 24.34% |
+| 3.1-as-judge preferred 3.1 output | 153 / 226 |
+| 3.1-as-judge preferred 3.5 output | 73 / 226 |
+| 3.5-as-judge preferred 3.1 output | 142 / 226 |
+| 3.5-as-judge preferred 3.5 output | 84 / 226 |
+
+Manual review of the 55 disagreement cases produced:
+
+| Measure | Result |
+|---|---:|
+| Cases reviewed | 55 |
+| Gemini 3.1 wins | 21 |
+| Gemini 3.5 wins | 16 |
+| Ties | 18 |
+| Decisive comparisons | 37 |
+| 3.1 share of decisive wins | 56.8% |
+| 3.5 share of decisive wins | 43.2% |
+| 3.1 judge agreement with human | 18 / 37 (48.6%) |
+| 3.5 judge agreement with human | 19 / 37 (51.4%) |
+
+Frequently observed failure modes were:
+
+- Inadequate uncertainty handling: 21 cases.
+- Weak grounding in the narrative: 20 cases.
+- Incorrect technique mapping: 14 cases.
+- Unsupported or hallucinated technique: 13 cases.
+- No material issue: 15 cases.
+- Retrieved-context contamination: 3 cases.
+- Missed expected technique: 3 cases.
+- Unclear analyst-facing explanation: 1 case.
+- Other: 3 cases.
+
+The manual review also identified shared pipeline and dataset-quality issues:
+
+- Some cases had empty or irrelevant retrieved context.
+- Some expected labels were not well supported by the narrative.
+- Some failures affected both models and therefore represented shared system or benchmark issues rather than useful model-selection evidence.
+- The 32.7% tie rate indicates substantial practical overlap between the two models.
+
+A separate vector-only baseline review covered 57 disagreement cases and favoured Gemini 3.1 Flash-Lite, but it was not combined with the reranked result because it used a different retrieval configuration.
+
+### Decision made
+
+- Treat the reranked evaluation as the authoritative v1 evidence for answer-model selection.
+- Select `gemini-3.1-flash-lite` as the default v1 answer-generation model.
+- Retain `gemini-3.5-flash-lite` as an evaluated alternative.
+- Retain vector-only evaluation results as diagnostic baseline evidence rather than model-selection evidence.
+- Record the final model-selection decision in DEC-021.
+- Add shared-failure and empty-context cases to a future regression or gold-standard set.
+
+### Problems or uncertainties
+
+- The 226-case evaluation set is still an implementation-comparison set containing development- and test-derived cases, not a frozen held-out benchmark.
+- LLM judges are not ground truth; manual review was used to adjudicate all reranked judge disagreements.
+- The high tie rate means the model choice is a measured v1 preference, not a claim of universal superiority.
+- Future changes to retrieval, prompts, corpus release, answer schema, or deployment conditions may require the comparison to be rerun.
+- External narrative redistribution and provenance restrictions still apply to local evaluation CSVs.
+
+### Next step
+
+Synchronise README, runbook, evaluation notes, dataset notes, project log, UI model information, dashboard labels, and DEC-020 / DEC-021 with the completed reranked evaluation and manual-review results.
+
+---
+
+## 2026-08-16 — Documentation and UI alignment after model selection
+
+### Stage
+
+Documentation, interface, evaluation-artefact, and reproducibility alignment.
+
+### Goal
+
+Ensure that the repository documentation and Streamlit interface describe the implemented v1 system rather than the earlier assumption that Gemini 3.5 Flash-Lite would be the default or preferred model.
+
+### What was done
+
+- Updated the default model configuration to:
+
+  ```text
+  MODEL_ID=gemini-3.1-flash-lite
+  ```
+
+- Updated UI model handling so `app/query.py` reads the configured `MODEL_ID` without a hard-coded Gemini 3.5 fallback.
+- Updated `app/home.py` system information to show the configured model and vector-plus-reranking retrieval path.
+- Updated `app/dashboard.py` to display both reciprocal judge preference charts:
+  - Gemini 3.1 Flash-Lite as judge.
+  - Gemini 3.5 Flash-Lite as judge.
+- Kept the dashboard agreement chart connected to:
+
+  ```text
+  data/evaluation_reports/reranked/judge_agreement_summary.csv
+  ```
+
+- Kept the dashboard retrieval comparison aligned with the documented DEC-018 and DEC-019 benchmark values.
+- Documented that the retrieval-comparison chart currently uses explicit accepted benchmark values in the application rather than dynamically loading retrieval CSVs.
+- Documented that feedback persistence is implemented through `data/feedback/feedback.csv`.
+- Documented that an empty feedback chart means no feedback has yet been submitted.
+- Documented the four Streamlit tabs:
+  - Home.
+  - Query.
+  - Dashboard.
+  - Evaluation Review.
+- Documented the manual-review queues and results for both:
+  - Reranked v1.
+  - Vector-only baseline.
+- Updated `app/Dockerfile` documentation to reflect that it runs `app/home.py`.
+- Added troubleshooting guidance for Streamlit file-watcher warnings caused by optional `torchvision` imports inside `transformers`.
+
+### What was learned
+
+- The repository had several stale statements because the UI was documented before the evaluation and feedback workflows were completed.
+- The dashboard is a monitoring view over accepted benchmark artefacts, not a live benchmark runner.
+- Showing both judges is necessary for a transparent reciprocal pairwise evaluation display.
+- Feedback persistence is now implemented, although feedback volume is not yet sufficient for strong product conclusions.
+- The UI and documentation should distinguish:
+  - The selected runtime answer model.
+  - The two models used in evaluation.
+  - The two models used as reciprocal judges.
+- The selected model is determined by reranked manual-review evidence, not by a hard-coded UI assumption.
+
+### Decision made
+
+- Use `gemini-3.1-flash-lite` as the documented and configured default v1 answer-generation model.
+- Present both candidate models and both judges in evaluation-facing views.
+- Treat dashboard hard-coded retrieval values as explicit documented benchmark constants until dynamic loading is implemented.
+- Treat persisted feedback as a local evaluation artefact rather than a production-quality monitoring signal.
+- Keep the project log chronological while using DEC-020 and DEC-021 as the stable sources of truth for evaluation methodology and model selection.
+
+### Problems or uncertainties
+
+- The dashboard retrieval comparison should eventually load named benchmark artefacts or a versioned metrics file instead of keeping values in application code.
+- The feedback store is file-based and local; it is not yet suitable for concurrent production deployment.
+- The full application Docker Compose deployment path still requires final validation for PostgreSQL networking, model caching, and environment handling.
+- The final external benchmark remains subject to frozen development-split curation rules and unresolved third-party narrative redistribution considerations.
+
+### Next step
+
+Run a final repository-wide consistency check for stale model names, old evaluation paths, obsolete “feedback not implemented” statements, and references to the former vector-only answer-generation baseline.
+
+---
+
+## Template for future entries
+
+## YYYY-MM-DD — Short stage title
+
+### Stage
+
+Ingestion / corpus design / database / retrieval / generation / evaluation / interface / monitoring / documentation.
+
+### Goal
+
+What is the target outcome for this stage?
+
+### What was done
+
+- Action completed.
+- Action completed.
+- Action completed.
+
+### What was learned
 
 - Insight or changed understanding.
 - Constraint discovered.
 - Clarification gained.
 
-
 ### Decision made
-
 
 State the decision made during this stage, or write `No new stable decision` and link to an existing decision if applicable.
 
-
 ### Problems or uncertainties
-
 
 - Issue or unresolved question.
 - Risk or ambiguity.
 
-
 ### Next step
 
-
 State the next single concrete action.
-
 
 ---

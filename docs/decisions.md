@@ -28,8 +28,9 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 | DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
 | DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
 | DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
-| DEC-019 | User query rewriting evaluation and decision             | Accepted          | 2026-08-13 |
-| DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted          | 2026-08-13 |
+| DEC-019 | User query rewriting evaluation and decision | Accepted | 2026-08-13 |
+| DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted | 2026-08-16 |
+| DEC-021 | Default answer-generation model selection | Accepted | 2026-08-16 |
 
 ---
 
@@ -513,7 +514,7 @@ Evaluate the HNSW index only if later corpus size, latency measurements, or depl
 
 ### Context
 
-The project needs to be presentation-ready while retaining an auditable record of design choices, source processing, evaluation evidence, and reproducible commands.
+The project needs to be presentation-ready while retaining an auditable record of design choices, source processing, evaluation evidence, interface behaviour, and reproducible commands.
 
 Documentation must be split clearly enough that the README and runbook do not become long, overlapping project specifications.
 
@@ -521,12 +522,14 @@ Documentation must be split clearly enough that the README and runbook do not be
 
 Separate public overview, decisions, working notes, dataset evidence, evaluation evidence, and operational instructions across dedicated files:
 
-- `README.md` — concise public project overview, problem, scope, current status, architecture summary, quick start, limitations, and attribution.
-- `docs/project-log.md` — chronological progress, discoveries, temporary issues, and immediate next steps.
+- `README.md` — concise public project overview, problem, scope, current status, architecture summary, quick start, interface overview, limitations, and attribution.
+- `docs/project-log.md` — chronological progress, discoveries, temporary issues, implementation notes, and immediate next steps.
 - `docs/decisions.md` — stable architectural and design decisions with alternatives and consequences.
 - `docs/dataset-notes.md` — source provenance, corpus scope, schema, extraction rules, data-quality notes, and committed-versus-ignored artefact policy.
-- `docs/evaluation-notes.md` — benchmark design, retrieval configurations, metrics, findings, and failure analysis.
-- `docs/runbook.md` — concise reproducible setup, pipeline commands, verification checks, reset instructions, and common troubleshooting.
+- `docs/evaluation-notes.md` — benchmark design, retrieval configurations, metrics, answer-generation experiments, human review, findings, and failure analysis.
+- `docs/runbook.md` — reproducible setup, pipeline commands, verification checks, evaluation commands, manual-review workflow, interface usage, reset instructions, and common troubleshooting.
+
+The Streamlit interface and monitoring dashboard are documented in the README and runbook. Their stable architectural implications are recorded here only when they affect project behaviour, evaluation traceability, or reproducibility.
 
 Keep detailed rationale in the relevant evidence or decision document rather than duplicating it in the README or runbook.
 
@@ -537,12 +540,14 @@ Keep detailed rationale in the relevant evidence or decision document rather tha
 - Use the runbook as a complete project specification.
 - Keep implementation notes outside the repository.
 - Use notebook comments as the primary record.
+- Document the interface only through screenshots or informal notes.
 
 ### Consequences
 
 - The README remains concise and useful to portfolio reviewers.
-- The runbook stays operational and can be used without reading the entire project history.
+- The runbook remains operational and can be used without reading the entire project history.
 - Dataset rules and evaluation evidence have clear homes outside the runbook.
+- Interface behaviour, manual review, and feedback persistence are documented where users and reviewers need them.
 - Multiple files require disciplined maintenance when decisions or implementation status change.
 - The repository provides a clearer and more credible evidence trail for technical reviewers.
 
@@ -613,42 +618,30 @@ Keep the external repository in `data/external_inspection/` and ignored by Git d
 
 ## DEC-015 — Default retrieval method for v1
 
-
 **Status:** Superseded by DEC-018  
 **Date:** 2026-07-31
 
-
 ### Context
-
 
 Text, vector, and hybrid retrieval baselines have now been implemented over the active Enterprise ATT&CK technique corpus and evaluated against the same Expert-derived incident-narrative benchmark.
 
-
 On the current 226-case retrieval benchmark, text-only retrieval is a very weak lexical baseline. Vector retrieval clearly outperforms text on all core ranking metrics. Hybrid retrieval using Reciprocal Rank Fusion is slightly stronger than vector-only on some ranking metrics (e.g. Recall@1, Recall@3, Hit@3, MRR) while Recall@5 and Recall@10 are identical.
-
 
 Hybrid offers a small uplift over vector at the current corpus size and query mix, but it adds additional implementation and compute complexity.
 
-
 ### Decision
-
 
 Use **vector retrieval** as the default ATT&CK candidate-retrieval method for version 1.
 
-
 Retain **text retrieval** and **hybrid retrieval (vector + text, RRF)** as implemented, benchmarked baselines and diagnostic tools. Hybrid can be reconsidered and promoted to the default retrieval method later if improvements to the lexical channel or corpus characteristics increase its advantage enough to justify the extra complexity and resource cost.
 
-
 ### Alternatives considered
-
 
 - Use hybrid retrieval as the v1 default because it is numerically slightly stronger than vector-only on the current benchmark.
 - Use text-only retrieval as the default.
 - Delay choosing a default until answer-generation evaluation is complete.
 
-
 ### Consequences
-
 
 - The default v1 retrieval method is simple, relatively cheap to run, and clearly stronger than text-only on the current benchmark.
 - Hybrid remains available for diagnostics and future promotion; it is not removed despite its current marginal advantage.
@@ -656,31 +649,22 @@ Retain **text retrieval** and **hybrid retrieval (vector + text, RRF)** as imple
 - Future retrieval work can focus on improving the lexical channel and fusion configuration; if those changes materially increase hybrid's advantage, the default can be updated in a new decision record.
 - This decision is superseded by DEC-018 for the default v1 retrieval configuration, which adds local cross-encoder reranking to vector retrieval.
 
-
 ---
 
-
 ## DEC-016 — Retrieval-module refactor and shared helpers
-
 
 **Status:** Accepted  
 **Date:** 2026-07-31
 
-
 ### Context
-
 
 The initial retrieval implementation evolved incrementally and combined multiple concerns (SQL, scoring, metrics, and fusion) inside a small number of files. As retrieval benchmarks and answer-generation support were added, it became harder to reason about and reuse retrieval logic across evaluation scripts.
 
-
 Repeated embedding-model initialisation in different scripts also added unnecessary overhead and noisy logging.
-
 
 ### Decision
 
-
 Refactor retrieval and evaluation code into clearer modules with shared helpers:
-
 
 - Keep text, vector, and hybrid retrieval implementations under `src/retrieval/`:
   - `text.py` — lexical retrieval over the `techniques` table.
@@ -695,138 +679,157 @@ Refactor retrieval and evaluation code into clearer modules with shared helpers:
   - text, vector, and hybrid retrieval benchmark scripts,
   - answer-generation evaluation where retrieval metrics are needed.
 
-
 ### Alternatives considered
-
 
 - Keep all retrieval code in a single module.
 - Initialise the embedding model directly in each benchmark script.
 - Implement retrieval logic inline in each evaluation script without shared helpers.
 - Move immediately to a separate microservice for retrieval instead of refactoring modules.
 
-
 ### Consequences
-
 
 - Retrieval logic is easier to understand and reuse across benchmarks and future components (such as an interface).
 - Embedding-model initialisation is centralised, reducing duplication and making it easier to change the default model later.
 - Benchmark scripts become thinner, focusing on orchestration and I/O rather than retrieval implementation details.
 - The new structure adds a small amount of upfront complexity but simplifies future changes to retrieval and metrics.
 
-
 ---
-
 
 ## DEC-017 — Answer-generation pipeline and output contract
 
-
 **Status:** Accepted baseline  
-**Date:** 2026-07-31
-
+**Date:** 2026-07-31  
+**Updated:** 2026-08-16
 
 ### Context
 
+Retrieval benchmarks established that vector retrieval was a strong baseline and that local cross-encoder reranking improved the ordering of retrieved ATT&CK candidates.
 
-Retrieval benchmarks established that vector retrieval is a strong default candidate backend, with hybrid providing a marginal uplift for some metrics. To support the project's goal of analyst-facing outputs, the system also needs a candidate-answer layer that:
+The project also needs a candidate-answer layer that:
 
-
-- is grounded in retrieved ATT&CK records,
-- clearly expresses uncertainty,
-- and produces structured outputs suitable for human review and scoring.
-
-
-At this stage, answer-generation design and evaluation are still evolving, so the initial pipeline must be treated as a baseline rather than a final contract.
-
+- is grounded in retrieved ATT&CK records;
+- clearly expresses uncertainty;
+- produces structured outputs suitable for human review and scoring;
+- allows retrieval failures to be distinguished from answer-generation failures;
+- records enough metadata to reproduce model comparisons.
 
 ### Decision
 
+Use a structured answer-generation pipeline with a stable high-level output contract.
 
-Introduce a structured answer-generation pipeline with a clear output contract:
+The current v1 answer-generation flow is:
 
+```text
+Incident narrative
+  → Vector retrieval of top 20 ATT&CK candidates
+  → Local cross-encoder reranking
+  → Top 5 reranked ATT&CK records for answer context
+  → Structured answer generation
+  → Analyst-facing answer and retrieved-evidence display
+```
 
-- Retrieval:
-  - Use vector retrieval as the initial answer-generation baseline to fetch top-k ATT&CK technique candidates for each incident narrative.
-  - Record the retrieved ATT&CK IDs and any metadata needed for grounding.
-- Generation:
-  - Use an LLM client (configured via environment) to generate a structured answer that includes:
-    - `primary_attack_id` — the main candidate technique ID selected from the retrieved list.
-    - `alternative_attack_ids` — a small set of additional candidate technique IDs from the retrieved list.
-    - `supporting_attack_ids` — IDs for which evidence is explicitly discussed.
-    - `answer_summary` — a concise, analyst-readable explanation of the candidates and their rationale.
-    - `retrieval_grounding_note` — a short explanation of how retrieved ATT&CK descriptions support the mapping.
-    - `uncertainty_note` — explicit mention of ambiguity, missing expected labels, or incomplete evidence.
-    - `review_required` — a boolean flag indicating whether a human should review the answer before using it.
-    - `prompt_version` and `llm_model` metadata.
-- Output:
-  - Store one record per evaluation case in:
-    - `data/evaluation_reports/expert_answer_generation_v1.jsonl`
-    - `data/evaluation_reports/expert_answer_generation_v1.csv`
-  - Use this structured output as the basis for human-review rubrics and failure analysis.
+#### Retrieval
 
+The current v1 answer-generation and analyst-facing retrieval configuration uses:
 
-Treat this pipeline and schema as an accepted baseline: it is suitable for early answer evaluation and rubric design, but model choice, prompt wording, and some field details may change as evaluation results accumulate.
+- `sentence-transformers/all-MiniLM-L6-v2` for query embeddings;
+- PostgreSQL with pgvector cosine-similarity retrieval;
+- a first-stage candidate pool of 20 ATT&CK records;
+- `cross-encoder/ms-marco-MiniLM-L-6-v2` for local CPU reranking;
+- the top 5 reranked records as the initial answer-generation context.
 
+The vector-only answer-generation implementation remains available as a historical and diagnostic baseline, but it is not the current v1 runtime configuration.
+
+Record the retrieved ATT&CK IDs and retrieval metadata needed for grounding and evaluation.
+
+#### Generation
+
+Use an LLM client configured through the environment to produce a structured answer containing:
+
+- `primary_attack_id` — the main candidate technique ID selected from the retrieved list.
+- `alternative_attack_ids` — a small set of additional candidate technique IDs from the retrieved list.
+- `supporting_attack_ids` — IDs for which evidence is explicitly discussed.
+- `answer_summary` — a concise, analyst-readable explanation of the candidates and their rationale.
+- `retrieval_grounding_note` — a short explanation of how retrieved ATT&CK descriptions support the mapping.
+- `uncertainty_note` — explicit mention of ambiguity, missing expected labels, or incomplete evidence.
+- `review_required` — a boolean flag indicating whether a human should review the answer before use.
+- `prompt_version` and `llm_model` metadata.
+- Available latency and token-usage metadata.
+
+The selected v1 default model is recorded separately in DEC-021. The answer-generation comparison evaluates both:
+
+- `gemini-3.1-flash-lite`;
+- `gemini-3.5-flash-lite`.
+
+#### Output
+
+The original vector-only baseline outputs are stored in:
+
+```text
+data/evaluation_reports/expert_answer_generation_v1.jsonl
+data/evaluation_reports/expert_answer_generation_v1.csv
+```
+
+The current reranked v1 model-comparison output is stored in:
+
+```text
+data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
+```
+
+Use structured outputs as the basis for:
+
+- pairwise LLM-as-judge comparison;
+- manual review of judge disagreements;
+- rubric-based answer evaluation;
+- failure analysis;
+- analyst-facing evidence display.
+
+Treat the output contract as a stable high-level baseline. Prompt wording, model choice, and non-essential metadata may evolve through later decision records.
 
 ### Alternatives considered
-
 
 - Generate free-form narrative answers without a structured schema.
 - Embed ATT&CK IDs directly in natural language without separate fields.
 - Combine retrieval and generation into a single monolithic script.
-- Delay any answer-generation implementation until retrieval work and external benchmark curation are fully complete.
-
+- Continue using vector-only retrieval for the deployed answer-generation path.
+- Delay answer-generation implementation until retrieval work and external benchmark curation were fully complete.
 
 ### Consequences
 
-
-- The answer layer remains explicitly grounded in retrieved ATT&CK records and cannot introduce arbitrary new IDs outside the retrieved candidate set without being flagged.
-- The structured contract allows for systematic human review and scoring across dimensions such as candidate validity, retrieval grounding, narrative grounding, uncertainty handling, and analyst usefulness.
-- The pipeline enables separation of retrieval failures (missing or mis-ranked candidates) from generation failures (poor reasoning over available evidence).
-- Future work can iterate on prompts, model selection, and rubric design while preserving the same high-level output contract, or evolve the contract in new decision records when needed.
-
+- The answer layer remains explicitly grounded in retrieved ATT&CK records.
+- The structured contract allows systematic human review and scoring across candidate validity, retrieval grounding, narrative grounding, uncertainty handling, and analyst usefulness.
+- The pipeline enables separation of retrieval failures from generation failures.
+- Reranked context is now used in the current answer-generation comparison and analyst-facing Query workflow.
+- The original vector-only outputs remain useful for historical comparison but must not be described as the current deployed v1 answer-generation configuration.
+- The answer-generation model is selected separately from the retrieval configuration so the two decisions can be evaluated independently.
+- Future changes to retrieval depth, answer schema, prompt contract, or model family require a new comparison and may require a new decision record.
 
 ---
 
-
-
 ## DEC-018 — Default retrieval configuration with reranking
-
-
 
 **Status:** Accepted  
 **Date:** 2026-08-12  
-**Supersedes:** DEC-015 for the default v1 retrieval configuration
-
-
+**Supersedes:** DEC-015 for the default v1 retrieval configuration  
+**Updated:** 2026-08-16
 
 ### Context
 
-
-
 DEC-015 selected vector retrieval as the v1 default after comparing text, vector, and hybrid retrieval. At that time, hybrid retrieval produced only a marginal improvement over vector retrieval and did not justify the additional complexity.
 
+A local second-stage document-reranking experiment was implemented and evaluated using:
 
+- first-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`;
+- PostgreSQL with pgvector cosine-distance search over active Enterprise ATT&CK technique and sub-technique records;
+- retrieval of the top 20 vector candidates;
+- a local CPU cross-encoder reranker, `cross-encoder/ms-marco-MiniLM-L-6-v2`;
+- existing structured ATT&CK `embedding_text` as the reranker document text;
+- top 10 reranked records for retrieval benchmark compatibility;
+- top 5 reranked records for the current analyst-facing Query workflow and answer-generation comparison.
 
-A local second-stage document reranking experiment has now been implemented and evaluated. The experiment uses:
+The vector-only and vector-plus-reranking configurations were evaluated against the same 226-case Expert-derived retrieval set.
 
-
-
-- First-stage semantic retrieval with `sentence-transformers/all-MiniLM-L6-v2`.
-- PostgreSQL with pgvector cosine-distance search over active Enterprise MITRE ATT&CK technique and sub-technique records.
-- Retrieval of the top 20 vector candidates.
-- A local CPU cross-encoder reranker, `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-- Existing structured ATT&CK `embedding_text` as the reranker document text. This contains ATT&CK ID, technique name, tactics, platforms, and cleaned description.
-- Return of the top 10 reranked records for benchmark compatibility.
-
-
-
-The vector-only and vector-plus-reranking configurations were evaluated against the same current 226-case Expert-derived retrieval set.
-
-
-
-Results were:
-
-
+### Results
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
 |---|---:|---:|---:|
@@ -838,34 +841,22 @@ Results were:
 | Hit@10 | 0.5619 | 0.5973 | +0.0354 |
 | MRR | 0.3134 | 0.3578 | +0.0444 |
 
-
-
 The reranked configuration improved every reported retrieval metric.
 
-
 The final synced local CPU reranking benchmark measured:
-
 
 - Median total retrieval time: 1,254.79 ms.
 - P95 total retrieval time: 1,451.74 ms.
 - Median reranking time: 1,223.29 ms.
 - P95 reranking time: 1,414.23 ms.
 
-
-A second benchmark run after `uv lock` and `uv sync` reproduced the same retrieval-quality metrics, confirming that the selected reranking configuration remains stable under the final locked dependency state.
-
-
-Reranking is therefore the dominant source of retrieval latency in the evaluated pipeline.
-
+A second benchmark run after `uv lock` and `uv sync` reproduced the same retrieval-quality metrics, confirming that the selected configuration remained stable under the final locked dependency state.
 
 ### Decision
 
-
 Use **vector retrieval plus local cross-encoder document reranking** as the selected default retrieval configuration for version 1.
 
-
-The default v1 flow is:
-
+The default v1 retrieval flow is:
 
 ```text
 Incident narrative
@@ -873,84 +864,64 @@ Incident narrative
   → pgvector cosine-similarity retrieval of top 20 ATT&CK records
   → Local CPU cross-encoder reranking with cross-encoder/ms-marco-MiniLM-L-6-v2
   → Ranked ATT&CK candidates
-  → Structured answer generation baseline or future analyst-facing display
 ```
 
-
-Use the following depths by default:
-
+Use the following depths:
 
 - Retrieval evaluation: retrieve 20 vector candidates and return 10 reranked candidates, preserving comparison with Recall@10 and Hit@10.
-- Future analyst-facing UI and answer-generation integration: retrieve 20 vector candidates and return a smaller reranked top-k context, initially expected to be 5 candidates.
-- Current answer-generation baseline: continues to use vector retrieval until reranked retrieval is integrated and evaluated in that pipeline.
-
+- Analyst-facing Query workflow: retrieve 20 vector candidates and return the top 5 reranked records.
+- Current reranked answer-generation comparison: retrieve 20 vector candidates and use the top 5 reranked records as answer-generation context.
 
 Retain the following retrieval methods as implemented baselines and diagnostic modes:
-
 
 - Text-only retrieval.
 - Vector-only retrieval.
 - Hybrid text-plus-vector retrieval using Reciprocal Rank Fusion.
 - Vector retrieval plus local cross-encoder reranking.
+- Query rewrite plus vector retrieval and reranking.
 
-
-Keep vector-only retrieval available as a fallback option for future interface/runtime handling if the reranker model cannot load. The evaluation benchmark must fail rather than silently fall back to vector-only retrieval, so benchmark outputs cannot be misrepresented as reranked results.
-
+Keep vector-only retrieval available as a fallback option for future interface or runtime handling if the reranker cannot load. The evaluation benchmark must fail rather than silently fall back to vector-only retrieval, so benchmark outputs cannot be misrepresented as reranked results.
 
 ### Alternatives considered
-
 
 - Retain vector-only retrieval as the v1 default because it has lower latency and less implementation complexity.
 - Use hybrid text-plus-vector retrieval as the default because it was marginally stronger than vector-only retrieval in the earlier comparison.
 - Use a larger local reranker model.
 - Use a hosted reranking API.
 - Use an ONNX-optimised reranker implementation before selecting a default.
-- Defer reranking until after answer-generation evaluation is complete.
-
-
+- Defer reranking until after answer-generation evaluation was complete.
 
 ### Consequences
 
-
-
-- The selected default improves all reported metrics over vector-only retrieval on the current Expert-derived evaluation set.
+- The selected default improves all reported retrieval metrics over vector-only retrieval on the current Expert-derived evaluation set.
 - The strongest observed improvement is in ordering quality: MRR increased from 0.3134 to 0.3578, while Hit@3 increased from 0.3540 to 0.4159.
-- In the final synced local CPU benchmark run, the reranking stage produced 1,254.79 ms median total retrieval latency, 1,451.74 ms p95 total latency, 1,223.29 ms median reranking time, and 1,414.23 ms p95 reranking time. This is accepted for the initial analyst-assist workflow because retrieval quality improved consistently across all reported metrics.
-- The Streamlit interface should show progress while retrieval and reranking are running.
-- The interface should expose the retrieval method, candidate ranks, and returned ATT&CK evidence so that analysts can inspect the basis of the ranking.
-- The project now satisfies the implemented-and-evaluated document reranking best-practice requirement.
-- The current result is based on the existing 226-case Expert-derived evaluation set, which includes development and test-derived records and is not yet a frozen held-out benchmark.
-- This decision does not replace DEC-014. Future final external benchmark claims must still use curation rules frozen on the Expert development split before evaluation on the held-out Expert test split.
-- ONNX optimisation is deferred. It may be evaluated later as a deployment or performance optimisation, but it is not required to establish the current reranking result.
-- Future changes to candidate-pool depth, cross-encoder model, CPU/GPU execution, ONNX runtime, or fallback behaviour require a new benchmark comparison and a new decision record if they alter the selected default configuration.
-
+- The selected reranked configuration is now integrated into the analyst-facing Query workflow and the reranked answer-generation comparison.
+- In the final synced local CPU benchmark run, reranking produced 1,254.79 ms median total retrieval latency and 1,451.74 ms p95 total latency.
+- The Streamlit interface should provide visible progress while retrieval and reranking are running.
+- The interface exposes retrieved ATT&CK evidence and the selected retrieval path so analysts can inspect the basis of the ranking.
+- The current result is based on the existing 226-case Expert-derived evaluation set, which includes development- and test-derived records and is not yet a frozen held-out benchmark.
+- This decision does not replace DEC-014. Final external benchmark claims must still use curation rules frozen on the Expert development split before evaluation on the held-out Expert test split.
+- ONNX optimisation is deferred. It may be evaluated later as a deployment or performance optimisation, but it is not required to establish the current result.
+- Future changes to candidate-pool depth, returned top-k, cross-encoder model, CPU/GPU execution, ONNX runtime, or fallback behaviour require a new benchmark comparison and a new decision record if they alter the selected default configuration.
 
 ---
 
-
 ## DEC-019 — User query rewriting evaluation and decision
-
 
 **Status:** Accepted  
 **Date:** 2026-08-13
 
-
 ### Context
-
 
 Following DEC-018, which established vector retrieval plus local cross-encoder reranking as the default v1 configuration, an additional retrieval enhancement was evaluated: LLM-based user query rewriting.
 
-
 The hypothesis was that rewriting verbose incident narratives into concise, ATT&CK-oriented retrieval queries might improve semantic matching by:
-
 
 - Removing report-writing filler and campaign background.
 - Focusing on behaviours, tools, execution methods, and IOCs.
 - Producing queries that better align with ATT&CK technique description embeddings.
 
-
 A query-rewriting pipeline was implemented and evaluated:
-
 
 - Query rewriting with Gemini 3.1 Flash Lite (`gemini-3.1-flash-lite`) via OpenAI-compatible API.
 - Prompt instructions directing the model to preserve only behaviours, tools, execution methods, file artefacts, credentials, targets, operating-system details, and network actions explicitly stated in the narrative.
@@ -959,12 +930,9 @@ A query-rewriting pipeline was implemented and evaluated:
 - Local CPU cross-encoder reranking with `cross-encoder/ms-marco-MiniLM-L-6-v2`.
 - Retrieval of 20 vector candidates, reranking, and return of top 10 candidates.
 
-
 The `rewritten_vector_reranked` configuration was evaluated against the same 226-case Expert-derived retrieval set used for DEC-018.
 
-
 Results were:
-
 
 | Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
 |---|---:|---:|---:|
@@ -976,53 +944,39 @@ Results were:
 | Hit@10 | 0.5973 | 0.6726 | +0.0753 |
 | MRR | 0.3578 | 0.3940 | +0.0362 |
 
-
 Query rewriting improved all reported retrieval metrics over the DEC-018 baseline.
 
-
 The benchmark measured the following latency characteristics:
-
 
 - Median total retrieval time: 4,362.28 ms.
 - P95 total retrieval time: 12,202.92 ms.
 - Median query-rewrite time: 3,183.88 ms.
 - P95 query-rewrite time: 10,954.94 ms.
 
-
 Query rewriting is therefore the dominant source of retrieval latency in the evaluated pipeline, adding approximately 3.1 seconds median latency and up to 11 seconds at P95 compared to the DEC-018 baseline.
-
 
 ### Decision
 
-
 **Do not adopt user query rewriting as the default retrieval configuration for version 1.**
-
 
 Retain **vector retrieval plus local cross-encoder reranking** (DEC-018) as the default v1 configuration.
 
-
 Document query rewriting as an evaluated retrieval enhancement that improved metrics but introduced unacceptable latency for the initial analyst-assist workflow. Keep the implementation available for future re-evaluation under the following conditions:
-
 
 - Access to lower-latency LLM endpoints (e.g., paid-tier Gemini with higher RPM limits, or self-hosted models).
 - Prompt-engineering improvements that reduce rewrite latency while preserving quality.
 - Embedding models fine-tuned for ATT&CK-specific query-document matching that may reduce reliance on query rewriting.
 - Hybrid approaches that combine raw narrative retrieval with rewritten-query retrieval.
 
-
 The query-rewriting implementation remains in the codebase:
-
 
 - `src/retrieval/query_rewriter.py` — LLM-based query rewriting with caching.
 - `src/retrieval/rewritten_reranked_vector.py` — End-to-end rewritten query retrieval with reranking.
 - `src/evaluation/run_expert_query_rewrite_retrieval_benchmark.py` — Benchmark script for evaluation.
 
-
 Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimiter` class that can be enabled for batch tasks and disabled for interactive use.
 
-
 ### Alternatives considered
-
 
 - Adopt query rewriting as the default despite the latency penalty, prioritising retrieval quality over response time.
 - Use query rewriting only for offline analysis or batch evaluation, not for interactive use.
@@ -1030,9 +984,7 @@ Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimite
 - Defer query-rewriting evaluation until after the v1 interface is deployed.
 - Use a different LLM (e.g., Gemini 2.5 Flash, Gemini 2.5 Pro) with different latency and instruction-following characteristics.
 
-
 ### Consequences
-
 
 - The default v1 retrieval configuration remains vector plus reranking with median latency ~1.3 seconds, acceptable for interactive analyst-assist workflows.
 - Query rewriting is documented as an evaluated best-practice component, satisfying the "user query rewriting" best-practice criterion (evaluated, even if not deployed).
@@ -1041,213 +993,253 @@ Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimite
 - Future work can explore prompt engineering (few-shot examples, detail preservation), alternative embedding models, or hybrid retrieval strategies to close the gap between retrieval quality and latency.
 - The decision preserves the option to revisit query rewriting in a future decision record if conditions change (e.g., paid-tier LLM access, improved prompts, or different latency requirements).
 
-
 ---
-
 
 ## DEC-020 — Pairwise LLM-as-judge evaluation for answer generation
 
-
 **Status:** Accepted  
-**Date:** 2026-08-13
-
+**Date:** 2026-08-16  
+**Supersedes:** The answer-model comparison and manual-review plan previously described in the earlier DEC-020 draft.
 
 ### Context
 
+DEC-017 established a structured answer-generation contract for mapping incident narratives to Enterprise MITRE ATT&CK techniques.
 
-DEC-017 defines the structured answer-generation pipeline and output contract for mapping incident narratives to MITRE ATT&CK techniques. It does not prescribe a specific LLM as the default answer-generation model.
+DEC-018 selected vector retrieval plus local cross-encoder reranking as the deployed v1 retrieval configuration. The current answer-generation comparison therefore needed to use the same retrieval path rather than the earlier vector-only baseline.
 
+The project needed a scalable, repeatable method to compare:
 
-To compare candidate models for this pipeline (in particular `gemini-3.1-flash-lite` vs `gemini-3.5-flash-lite`) on the existing 226-case expert-derived dataset, the project needs an evaluation method that:
+- `gemini-3.1-flash-lite`;
+- `gemini-3.5-flash-lite`.
 
+The evaluation needed to assess answer quality beyond retrieval accuracy, including:
 
-- Works on the structured outputs defined in DEC-017 (e.g. `answer_summary`, retrieved ATT&CK IDs).
-- Scales beyond what can be manually judged case-by-case.
-- Provides a clear signal about which model tends to produce better answers.
-- Still leaves room for targeted human review, especially where automated judges disagree.
-
-
-This decision introduces a pairwise LLM-as-judge evaluation setup to compare answer-generation models, without yet committing to a final default model choice.
-
+- technique relevance;
+- grounding in the incident narrative;
+- use of retrieved ATT&CK evidence;
+- uncertainty handling;
+- analyst usefulness;
+- conciseness.
 
 ### Decision
 
+Use reciprocal pairwise LLM-as-judge evaluation on the 226-case Expert-derived dataset under the selected v1 retrieval pipeline:
 
-Use a **pairwise LLM-as-judge evaluation** to compare answer-generation models on the 226-case expert dataset, with both `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` acting as judges.
+```text
+Incident narrative
+  → Vector retrieval: top 20 candidates
+  → Local cross-encoder reranking
+  → Top 5 reranked ATT&CK records
+  → Structured answer generation by each candidate model
+  → Pairwise LLM judging
+```
 
+For each case, generate one structured answer using each candidate model.
 
-#### 1. Evaluation inputs
+Store the reranked answer-generation comparison in:
 
+```text
+data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
+```
 
-For each of the 226 expert-derived incident narratives:
+The comparison records, where available:
 
+- `eval_id`;
+- model identifier;
+- incident narrative;
+- expected ATT&CK IDs;
+- retrieved ATT&CK IDs;
+- retrieval configuration;
+- retrieval latency metadata;
+- primary, alternative, and supporting ATT&CK IDs;
+- answer summary;
+- retrieval-grounding note;
+- uncertainty note;
+- review-required flag;
+- token metadata;
+- generation latency metadata.
 
-- Generate answers using the DEC-017 pipeline with both candidate models:
-  - `gemini-3.1-flash-lite`
-  - `gemini-3.5-flash-lite`
-- For each model, record the structured fields from DEC-017, in particular:
-  - `answer_summary`
-  - `retrieved_attack_ids`
-  - `llm_model`
-  - Any other metadata needed to reconstruct the comparison.
+### Pairwise judge protocol
 
+For each `eval_id`:
 
-These results are stored in:
+- Randomly assign the two generated answers to Answer A and Answer B.
+- Ask a judge to compare technique relevance, narrative grounding, uncertainty framing, analyst actionability, and conciseness.
+- Require JSON containing `reasoning`, `winner`, and `confidence`.
+- Map the selected A/B answer back to the underlying model identifier.
+- Run the protocol twice:
+  - `gemini-3.1-flash-lite` as judge;
+  - `gemini-3.5-flash-lite` as judge.
+- Use checkpointing and retry/backoff so interrupted or rate-limited runs can resume.
 
+Store the final judge outputs in:
 
-- `data/evaluation_reports/expert_answer_generation_v1.jsonl`
-- `data/evaluation_reports/expert_answer_generation_v1.csv`
+```text
+data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
+data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv
+```
 
+Persist the aggregated agreement and disagreement artefacts in:
 
-#### 2. Pairwise judge setup
+```text
+data/evaluation_reports/reranked/judge_agreement_summary.csv
+data/evaluation_reports/reranked/judge_disagreements.csv
+```
 
+### Results
 
-Define a pairwise LLM-as-judge protocol that:
+The reciprocal pairwise evaluation completed for all 226 cases.
 
+| Measure | Result |
+|---|---:|
+| Cases evaluated | 226 |
+| Cross-judge agreement | 171 / 226 |
+| Cross-judge agreement rate | 75.66% |
+| Cross-judge disagreements | 55 / 226 |
+| Cross-judge disagreement rate | 24.34% |
+| 3.1-as-judge preferred 3.1 output | 153 / 226 (67.70%) |
+| 3.1-as-judge preferred 3.5 output | 73 / 226 (32.30%) |
+| 3.5-as-judge preferred 3.1 output | 142 / 226 (62.83%) |
+| 3.5-as-judge preferred 3.5 output | 84 / 226 (37.17%) |
 
-- **Prompt structure**
-  - Shows the judge:
-    - The incident narrative (`query_text`).
-    - Answer A: summary and retrieved technique IDs.
-    - Answer B: summary and retrieved technique IDs.
-  - Instructs the judge to compare along:
-    1. Technique relevance to the narrative.
-    2. Evidence grounding in the narrative text.
-    3. Uncertainty framing.
-    4. Actionability for an analyst.
-    5. Conciseness.
-  - Requires step-by-step reasoning and a structured JSON verdict:
-    - `reasoning`
-    - `winner`: `"A"` or `"B"`.
-    - `confidence`: `"low" | "medium" | "high"`.
+### Human adjudication
 
+Automated judge disagreement was treated as evaluator uncertainty rather than as a final model-selection result.
 
-- **A/B randomisation**
-  - For each case, randomly assign model-3.1 and model-3.5 to Answer A or Answer B, to reduce position bias.
-  - Maintain a mapping from `"A"`/`"B"` back to the underlying model.
+All 55 reranked disagreement cases were manually reviewed blind to model identity using `app/evaluation.py` through the Streamlit Evaluation Review workflow.
 
+The reviewer saw:
 
-- **Judges**
-  - Run the pairwise comparison twice for each case:
-    - Once with `gemini-3.1-flash-lite` as judge.
-    - Once with `gemini-3.5-flash-lite` as judge.
-  - Use `src.llm_client.generate_text_answer` for judge calls, relying on its built-in retry/backoff behaviour.
+- the incident narrative;
+- expected ATT&CK labels and definitions;
+- retrieved ATT&CK context;
+- both structured answers labelled only as Answer A and Answer B;
+- optional failure-mode tags;
+- optional review notes.
 
+The reviewer selected one of:
 
-- **Outputs**
-  - For each judge, write one row per `eval_id` to:
-    - `data/evaluation_reports/expert_llm_judged_31_as_judge.csv`
-    - `data/evaluation_reports/expert_llm_judged_35_as_judge.csv`
-  - Each row includes:
-    - `eval_id`
-    - `judge_model`
-    - `winner` (mapped back to `gemini-3.1-flash-lite` or `gemini-3.5-flash-lite`)
-    - `reasoning`
-    - `confidence`
-    - Token usage metadata (prompt/completion/total, where available).
+- Answer A;
+- Answer B;
+- Tie.
 
+The selected answer was mapped back to its model identifier after submission.
 
-Checkpointing is enabled so the process can resume without re-judging completed cases.
+Model identities and both judge rationales were revealed only after the manual decision was saved.
 
+Completed results are stored in:
 
-#### 3. Judge agreement analysis
+```text
+data/evaluation_reports/reranked/manual_review_results.csv
+```
 
-
-After both judge runs complete:
-
-
-- Aggregate the per-judge CSVs to compute:
-
-
-  - **Total cases evaluated:** 226  
-  - **Agreement:** number of cases where 3.1-as-judge and 3.5-as-judge choose the same winner.  
-    - Current run: 169 / 226 (**74.78%**).
-  - **Disagreements:** cases where judges prefer different models.  
-    - Current run: 57 / 226 (**25.22%**).
-
-
-- Summarise preference distributions:
-
-
-  - **Judge 3.1-as-judge:**
-    - Prefers 3.1 output: 164 (72.57%).
-    - Prefers 3.5 output: 62 (27.43%).
-
-
-  - **Judge 3.5-as-judge:**
-    - Prefers 3.1 output: 149 (65.93%).
-    - Prefers 3.5 output: 77 (34.07%).
-
-
-- Persist agreement artefacts:
-
-
-  - `data/evaluation_reports/judge_agreement_summary.csv`  
-    (aggregated counts, rates, and preference summary).
-  - `data/evaluation_reports/judge_disagreements.csv`  
-    (the 57 disagreement cases, with model and judge decisions).
-
-
-These artefacts are used by the Streamlit monitoring dashboard (e.g. for the "Judge agreement rate" and "Judge preferences" charts) and by later manual review.
-
-
-#### 4. Human review plan (deferred)
-
-
-This decision **establishes the automated evaluation method and current agreement results**, but deliberately **defers** a final model choice until a small amount of manual inspection is completed.
-
-
-Planned follow-up (to be captured in a later decision, e.g. DEC-021):
-
-
-- Focus manual review on `judge_disagreements.csv`:
-  - Draw a small, documented sample (e.g. 15–20 cases).
-  - For each sampled `eval_id`, inspect:
-    - Narrative vs each model's `answer_summary` and retrieved IDs.
-    - Obvious plausibility, narrative alignment, and clear failures.
-- Use this to:
-  - Check that judge preferences are broadly reasonable.
-  - Identify any systematic failure modes (e.g. one model more prone to off-topic or over-confident answers).
-  - Inform the final choice of default answer-generation model and any prompt adjustments.
-
-
-Until that follow-up is complete, no change is made to the default model selection; DEC-020 only defines **how** models are compared and reports the current automated evidence.
-
+DEC-021 records the final human-adjudicated model-selection decision.
 
 ### Alternatives considered
 
-
-- **Single judge model only.**  
-  Using just one judge (e.g. 3.5-as-judge) would be simpler, but would hide judge bias and make it harder to assess reliability. Using both 3.1 and 3.5 as judges plus agreement analysis provides a clearer picture.
-
-
-- **Human-only evaluation.**  
-  Relying purely on expert human comparisons for all 226 cases would be higher fidelity but impractical in the project timeframe.
-
-
-- **No answer-level evaluation.**  
-  Evaluating only the retrieval layer would ignore how models reason over retrieved evidence, missing important differences in grounding, uncertainty handling, and usefulness.
-
-
-- **Token-level or rubric-only scoring.**  
-  Scoring each answer independently against a rubric was considered, but pairwise judging is more efficient for relative model comparison and easier to operationalise with LLM judges.
-
+- Use one LLM judge only.
+- Use human evaluation for all 226 cases.
+- Evaluate retrieval only and omit answer-level evaluation.
+- Use independent rubric scoring instead of pairwise comparison.
+- Select a model using automated judge preferences without human adjudication.
+- Use the earlier vector-only answer-generation comparison as the authoritative v1 evidence.
 
 ### Consequences
 
-
-- The project now has a **repeatable, tool-driven** method to compare answer-generation models on the existing 226-case dataset, aligned with the DEC-017 output contract.
-- Cross-judge evaluation and agreement analysis:
-  - Provide a quantitative signal about how often different judges agree (~75% in the current run).
-  - Reveal a consistent tendency for both judges to prefer `gemini-3.1-flash-lite` outputs on this dataset, without yet treating that as a final deployment decision.
-- The disagreement slice (57 cases) defines a **focused target** for later human inspection, making manual effort tractable and avoiding over-reliance on LLM judges.
-- The judge outputs and agreement metrics are already integrated into the Streamlit monitoring dashboard (`app/dashboard.py`), enabling visual inspection of:
-  - Judge agreement rate.
-  - Judge preferences for each judge model.
-- This decision does **not** change the current default answer-generation model. A future decision (e.g. DEC-021) will:
-  - Combine these automated results with targeted manual review.
-  - Decide whether to keep 3.1 as default, move to 3.5, or use a different configuration.
-- The Streamlit UI implementation (documented in the project log entry for 2026-08-13) uses these evaluation artefacts to support monitoring and future manual review workflows.
-
+- The project has a reproducible answer-level evaluation workflow aligned with the deployed v1 retrieval architecture.
+- Reciprocal judging exposes judge disagreement and reduces reliance on a single evaluator.
+- Full manual adjudication of disagreement cases provides a human evidence layer for model selection.
+- The final answer-generation model choice is documented separately in DEC-021.
+- The earlier vector-only evaluation artefacts are retained for diagnostic comparison but are not used to choose the deployed v1 model.
+- The Streamlit dashboard displays both judge preference distributions and cross-judge agreement.
+- The Evaluation Review tab provides an auditable interface for blinded comparison, failure-mode tagging, and review notes.
+- The 226-case evaluation remains an internal implementation-comparison set rather than a frozen held-out external benchmark.
 
 ---
+
+## DEC-021 — Select default answer-generation model after manual review
+
+**Status:** Accepted  
+**Date:** 2026-08-16  
+**Supersedes:** The deferred model-selection state described in the earlier DEC-020 draft.
+
+### Context
+
+DEC-020 compared `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` on 226 Expert-derived cases using reciprocal pairwise LLM judging under the selected v1 retrieval pipeline:
+
+```text
+vector retrieval
+  → local cross-encoder reranking
+  → top 5 answer-generation context
+```
+
+The two judges agreed on 171 of 226 cases (75.66%) and disagreed on 55 cases (24.34%).
+
+Because disagreement indicates evaluator uncertainty, all 55 reranked disagreement cases were manually reviewed blind to model identity.
+
+The review assessed:
+
+- technique relevance and correctness;
+- grounding in the incident narrative;
+- appropriate use of retrieved ATT&CK context;
+- uncertainty handling and `review_required` behaviour;
+- analyst usefulness and clarity.
+
+### Manual-review results
+
+| Measure | Result |
+|---|---:|
+| Cases reviewed | 55 |
+| Gemini 3.1 wins | 21 (38.2% of all cases) |
+| Gemini 3.5 wins | 16 (29.1% of all cases) |
+| Ties | 18 (32.7% of all cases) |
+| Decisive comparisons | 37 |
+| 3.1 share of decisive wins | 21 / 37 (56.8%) |
+| 3.5 share of decisive wins | 16 / 37 (43.2%) |
+| 3.1-as-judge agreement with human | 18 / 37 (48.6%) |
+| 3.5-as-judge agreement with human | 19 / 37 (51.4%) |
+
+The most frequent manually tagged failure modes were:
+
+- inadequate uncertainty handling: 21 cases;
+- weak grounding in the narrative: 20 cases;
+- incorrect technique mapping: 14 cases;
+- unsupported or hallucinated technique: 13 cases.
+
+The review also identified shared pipeline and dataset-quality issues, including incomplete retrieved context and expected labels that did not always match the narrative.
+
+These shared issues are retained as regression and data-quality candidates. They do not negate the relative model-selection comparison.
+
+### Decision
+
+Select `gemini-3.1-flash-lite` as the default v1 answer-generation model.
+
+### Rationale
+
+Gemini 3.1 Flash-Lite won 21 of 37 decisive blind human comparisons (56.8%), exceeding the predefined threshold of at least 55% of decisive wins and a minimum three-case margin.
+
+It led Gemini 3.5 Flash-Lite by five decisive cases.
+
+The 32.7% tie rate indicates substantial practical overlap between the models. Therefore, this is a measured v1 choice rather than a claim that 3.1 is universally superior.
+
+The selected model should remain subject to regression evaluation as prompts, retrieval settings, corpus versions, or deployment conditions change.
+
+A separate vector-only baseline review covered 57 judge-disagreement cases and also favoured 3.1:
+
+- 34 wins for 3.1;
+- 14 wins for 3.5;
+- 9 ties.
+
+This result is supporting diagnostic evidence only. It was not combined with the reranked result because the vector-only pipeline does not match the deployed v1 architecture.
+
+### Consequences
+
+- Set the default `MODEL_ID` to `gemini-3.1-flash-lite` in `.env.example` and runtime configuration.
+- Display the configured model in the Streamlit system information.
+- Use `gemini-3.1-flash-lite` in the current analyst-facing Query workflow unless overridden intentionally through environment configuration.
+- Retain `gemini-3.5-flash-lite` as an evaluated alternative.
+- Retain vector-only and reranked evaluation artefacts as reproducible baselines.
+- Retain the manual-review results and failure-mode tags for regression and data-quality analysis.
+- Add manually identified shared failures, empty-context cases, and misleading-label cases to a future regression or gold-standard dataset.
+- Re-run answer-generation and manual-review evaluation before changing the default retrieval configuration, generation prompt, answer schema, or default answer model.
+- Treat feedback persisted by the Streamlit application as a future evaluation signal, not as a replacement for controlled benchmark or human-review evidence.
