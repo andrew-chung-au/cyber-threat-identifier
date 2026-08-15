@@ -4,12 +4,14 @@ Monitoring Dashboard — 5 charts for project evaluation
 """
 from __future__ import annotations
 
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime as dt
+
 
 
 def render_monitoring_dashboard() -> None:
@@ -19,7 +21,7 @@ def render_monitoring_dashboard() -> None:
     st.subheader("1️⃣ Answer Generation Latency Distribution")
 
     try:
-        df = pd.read_csv("data/evaluation_reports/expert_llm_comparison_v1.csv")
+        df = pd.read_csv("data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv")
 
         fig = px.histogram(
             df,
@@ -39,19 +41,19 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load latency data: {e}")
 
-    # Chart 2: Judge preferences
-    st.subheader("2️⃣ Judge Preferences (3.5 Flash-Lite as Judge)")
+    # Chart 2a: Judge preferences (3.5 as judge)
+    st.subheader("2️⃣ Judge Preferences (Gemini 3.5 Flash-Lite as Judge)")
 
     try:
-        judge_35 = pd.read_csv("data/evaluation_reports/expert_llm_judged_35_as_judge.csv")
-        prefs = judge_35["winner"].value_counts()
+        judge_35 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv")
+        prefs_35 = judge_35["winner"].value_counts()
 
         fig = px.bar(
-            x=prefs.index,
-            y=prefs.values,
-            title="Which Model Did 3.5 Flash-Lite Prefer?",
+            x=prefs_35.index,
+            y=prefs_35.values,
+            title="Judge Preferences: Gemini 3.5 Flash-Lite",
             labels={"x": "Model", "y": "Count"},
-            color=prefs.index,
+            color=prefs_35.index,
             color_discrete_map={
                 "gemini-3.1-flash-lite": "#3498db",
                 "gemini-3.5-flash-lite": "#2ecc71",
@@ -59,7 +61,29 @@ def render_monitoring_dashboard() -> None:
         )
         st.plotly_chart(fig, width="stretch")
     except Exception as e:
-        st.error(f"Could not load judge data: {e}")
+        st.error(f"Could not load judge data (3.5): {e}")
+
+    # Chart 2b: Judge preferences (3.1 as judge)
+    st.subheader("2️⃣b Judge Preferences (Gemini 3.1 Flash-Lite as Judge)")
+
+    try:
+        judge_31 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv")
+        prefs_31 = judge_31["winner"].value_counts()
+
+        fig = px.bar(
+            x=prefs_31.index,
+            y=prefs_31.values,
+            title="Judge Preferences: Gemini 3.1 Flash-Lite",
+            labels={"x": "Model", "y": "Count"},
+            color=prefs_31.index,
+            color_discrete_map={
+                "gemini-3.1-flash-lite": "#3498db",
+                "gemini-3.5-flash-lite": "#2ecc71",
+            },
+        )
+        st.plotly_chart(fig, width="stretch")
+    except Exception as e:
+        st.error(f"Could not load judge data (3.1): {e}")
 
     # Chart 3: Retrieval method comparison
     st.subheader("3️⃣ Retrieval Method Comparison")
@@ -92,7 +116,7 @@ def render_monitoring_dashboard() -> None:
     st.subheader("4️⃣ Judge Agreement Rate")
 
     try:
-        agreement = pd.read_csv("data/evaluation_reports/judge_agreement_summary.csv")
+        agreement = pd.read_csv("data/evaluation_reports/reranked/judge_agreement_summary.csv")
         agree_rate = agreement["agreement_rate"].iloc[0]
 
         fig = px.pie(
@@ -108,10 +132,16 @@ def render_monitoring_dashboard() -> None:
     # Chart 5: User feedback distribution
     st.subheader("5️⃣ User Feedback Distribution")
 
-    try:
-        feedback_path = Path("data/feedback/feedback.csv")
-        if feedback_path.exists():
-            feedback_df = pd.read_csv(feedback_path)
+    feedback_path = Path("data/feedback/feedback.csv")
+
+    if not feedback_path.exists():
+        st.info("No feedback collected yet. Use the main app to submit feedback!")
+    else:
+        feedback_df = pd.read_csv(feedback_path)
+
+        if feedback_df.empty or "feedback" not in feedback_df.columns:
+            st.info("No feedback collected yet. Use the main app to submit feedback!")
+        else:
             counts = feedback_df["feedback"].value_counts()
 
             fig = px.bar(
@@ -126,10 +156,6 @@ def render_monitoring_dashboard() -> None:
                 },
             )
             st.plotly_chart(fig, width="stretch")
-        else:
-            st.info("No feedback collected yet. Use the main app to submit feedback!")
-    except Exception as e:
-        st.error(f"Could not load feedback data: {e}")
 
     # Footer
     st.divider()
@@ -141,6 +167,7 @@ def render_monitoring_dashboard() -> None:
         """,
         unsafe_allow_html=True,
     )
+
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
-[runner]
-fastReruns = false
-
 [server]
-fileWatcherType = "none"
+fileWatcherType = "auto"
+headless = true
+
+[browser]
+gatherUsageStats = false

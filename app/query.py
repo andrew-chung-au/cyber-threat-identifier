@@ -2,22 +2,26 @@
 """
 Cyber Threat Identifier — Query workflow
 
-Main query interface for mapping incident narratives to ATT&CK techniques.
+Uses vector retrieval + local cross-encoder reranking (DEC-018).
 """
 from __future__ import annotations
+
+import os
+import uuid
 
 import streamlit as st
 import pandas as pd
 
-from src.retrieval.embedding_model import get_embedding_model
 from src.database.db_connection import get_connection
 from src.generation.answer_generator import generate_candidate_answer
-from src.retrieval.vector import embed_query, retrieve_vector_candidates
+from src.retrieval.embedding_model import get_embedding_model
+from src.retrieval.reranked_vector import retrieve_reranked_vector
+from src.retrieval.reranker import get_reranker_model
+from src.retrieval.generation_context import fetch_records_for_generation
+from src.monitoring.feedback_store import save_feedback
 
 
 def render_query_interface() -> None:
-    """Render the incident → ATT&CK mapping interface."""
-
     st.subheader("Incident narrative")
     query = st.text_area(
         "Describe the incident:",
@@ -28,7 +32,6 @@ def render_query_interface() -> None:
 
     st.markdown("**Or try a sample query:**")
 
-    # Optional sample queries from evaluation file
     try:
         rewrite_df = pd.read_csv(
             "data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv"
@@ -54,60 +57,141 @@ def render_query_interface() -> None:
         disabled=not query.strip(),
     )
 
-    if not run_button:
-        return
+    if run_button:
+        with st.spinner(
+            "Analyzing incident and retrieving candidate techniques..."
+        ):
+            try:
+                embedding_model = get_embedding_model()
+                reranker_model = get_reranker_model()
 
-    with st.spinner("Analyzing incident and retrieving candidate techniques..."):
-        try:
-            embedding_model = get_embedding_model()
-            query_embedding = embed_query(query, embedding_model)
+                with get_connection(register_pgvector=True) as connection:
+                    reranked_result = retrieve_reranked_vector(
+                        connection=connection,
+                        embedding_model=embedding_model,
+                        reranker_model=reranker_model,
+                        query_text=query,
+                        candidate_k=20,
+                        top_k=5,
+                    )
 
-            with get_connection() as conn:
-                candidates = retrieve_vector_candidates(
-                    conn, query_embedding, top_k=5, rerank=True
+                    retrieved_ids = [
+                        candidate.attack_id
+                        for candidate in reranked_result.candidates
+                    ]
+
+                    retrieved_rows = fetch_records_for_generation(
+                        connection=connection,
+                        attack_ids=retrieved_ids,
+                    )
+
+                generation_result = generate_candidate_answer(
+                    incident_narrative=query,
+                    retrieved_rows=retrieved_rows,
                 )
 
-            answer = generate_candidate_answer(query, candidates)
+                st.session_state.analysis_result = {
+                    "query_id": str(uuid.uuid4()),
+                    "query": query,
+                    "answer": generation_result.answer,
+                    "model_id": os.getenv("MODEL_ID"),  # no fallback; must be set in .env
+                    "retrieved_ids": retrieved_ids,
+                    "retrieval_ms": reranked_result.total_retrieval_ms,
+                    "feedback_submitted": False,
+                }
 
-        except Exception as e:
-            st.error(f"❌ Error during analysis: {e}")
-            return
+            except Exception as error:
+                st.error(f"❌ Error during analysis: {error}")
+                return
+
+    result = st.session_state.get("analysis_result")
+    if not result:
+        return
+
+    query = result["query"]
+    answer = result["answer"]
 
     st.success("✅ Analysis complete")
 
-    # Answer
     st.markdown("### Generated answer")
-    st.markdown(answer.get("answer_text", "").strip() or "_No answer text returned._")
+    st.markdown(answer.answer_summary)
 
-    # Retrieved techniques
+    with st.expander("Retrieval grounding note"):
+        st.write(answer.retrieval_grounding_note)
+
+    with st.expander("Uncertainty note"):
+        st.write(answer.uncertainty_note)
+
     st.markdown("### Retrieved techniques")
-    if not candidates:
+    if not result["retrieved_ids"]:
         st.info("No techniques were retrieved for this query.")
     else:
-        for i, candidate in enumerate(candidates, 1):
-            with st.expander(
-                f"#{i}: {candidate.get('technique_id', 'N/A')} "
-                f"— {candidate.get('technique_name', 'Unknown')} "
-                f"(score: {candidate.get('score', 0):.3f})"
-            ):
-                st.markdown(f"**Technique ID:** `{candidate.get('technique_id', 'N/A')}`")
-                st.markdown(f"**Name:** {candidate.get('technique_name', 'Unknown')}")
-                st.markdown("**Description**")
-                st.write(candidate.get("description", "No description available."))
+        with get_connection() as connection:
+            rows = fetch_records_for_generation(
+                connection=connection,
+                attack_ids=result["retrieved_ids"],
+            )
 
-    # Feedback
+        for i, row in enumerate(rows, 1):
+            with st.expander(
+                f"#{i}: {row['attack_id']} — {row['name']} "
+                f"(retrieved via reranking)"
+            ):
+                st.markdown(f"**Technique ID:** `{row['attack_id']}`")
+                st.markdown(f"**Name:** {row['name']}")
+                st.markdown("**Description**")
+                st.write(row["description_clean"])
+
+
     st.markdown("### Feedback")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("👍 Helpful", key="feedback_up"):
-            st.success("Thanks for the feedback!")
-    with col2:
-        if st.button("👎 Not helpful", key="feedback_down"):
-            st.success("Thanks for the feedback!")
+    st.caption(
+        "Feedback is saved with the query and generated answer "
+        "to support system evaluation."
+    )
+
+    if result.get("feedback_submitted", False):
+        st.success("Thanks — your feedback has been recorded.")
+    else:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            helpful_clicked = st.button(
+                "👍 Helpful",
+                key=f"feedback_up_{result['query_id']}",
+            )
+
+        with col2:
+            not_helpful_clicked = st.button(
+                "👎 Not helpful",
+                key=f"feedback_down_{result['query_id']}",
+            )
+
+        selected_feedback = None
+        if helpful_clicked:
+            selected_feedback = "thumbs_up"
+        elif not_helpful_clicked:
+            selected_feedback = "thumbs_down"
+
+        if selected_feedback:
+            try:
+                saved_path = save_feedback(
+                    query_id=result["query_id"],
+                    feedback=selected_feedback,
+                    model_id=result["model_id"],
+                    query_text=result["query"],
+                    answer_text=result["answer"].model_dump_json(),
+                    retrieved_technique_ids=result["retrieved_ids"],
+                )
+
+                st.session_state.analysis_result["feedback_submitted"] = True
+                st.success(f"Feedback saved to `{saved_path}`.")
+                st.rerun()
+
+            except Exception as error:
+                st.error(f"Could not save feedback: {error}")
 
 
 if __name__ == "__main__":
-    # Standalone mode (if you ever run `streamlit run app/query.py`)
     st.set_page_config(
         page_title="Cyber Threat Identifier — Query",
         page_icon="🔍",
