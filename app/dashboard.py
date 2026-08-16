@@ -41,8 +41,8 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load latency data: {e}")
 
-    # Chart 2a: Judge preferences (3.5 as judge)
-    st.subheader("2️⃣ Judge Preferences (Gemini 3.5 Flash-Lite as Judge)")
+    # Chart 2: Judge preferences (3.5 as judge)
+    st.subheader("2️⃣ Judge Preferences: Gemini 3.5 Flash-Lite as Judge")
 
     try:
         judge_35 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv")
@@ -63,8 +63,8 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load judge data (3.5): {e}")
 
-    # Chart 2b: Judge preferences (3.1 as judge)
-    st.subheader("2️⃣b Judge Preferences (Gemini 3.1 Flash-Lite as Judge)")
+    # Chart 3: Judge preferences (3.1 as judge)
+    st.subheader("3️⃣ Judge Preferences: Gemini 3.1 Flash-Lite as Judge")
 
     try:
         judge_31 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv")
@@ -85,8 +85,8 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load judge data (3.1): {e}")
 
-    # Chart 3: Retrieval method comparison
-    st.subheader("3️⃣ Retrieval Method Comparison")
+    # Chart 4: Retrieval method comparison
+    st.subheader("4️⃣ Retrieval Method Comparison (MRR & Hit@3)")
 
     try:
         methods = ["Vector Only", "Vector+Rerank", "Query Rewrite+Rerank"]
@@ -112,8 +112,8 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load retrieval comparison data: {e}")
 
-    # Chart 4: Judge agreement rate
-    st.subheader("4️⃣ Judge Agreement Rate")
+    # Chart 5: Judge agreement rate
+    st.subheader("5️⃣ Judge Agreement Rate")
 
     try:
         agreement = pd.read_csv("data/evaluation_reports/reranked/judge_agreement_summary.csv")
@@ -129,8 +129,8 @@ def render_monitoring_dashboard() -> None:
     except Exception as e:
         st.error(f"Could not load agreement data: {e}")
 
-    # Chart 5: User feedback distribution
-    st.subheader("5️⃣ User Feedback Distribution")
+    # Chart 6: User feedback distribution
+    st.subheader("6️⃣ User Feedback Distribution")
 
     feedback_path = Path("data/feedback/feedback.csv")
 

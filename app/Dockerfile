@@ -1,46 +1,32 @@
 FROM python:3.13-slim
 
-
 WORKDIR /app
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    UV_LINK_MODE=copy \
+    HF_HOME=/app/.cache/huggingface \
+    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
+    STREAMLIT_SERVER_PORT=8501 \
+    STREAMLIT_SERVER_HEADLESS=true \
+    STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=ghcr.io/astral-sh/uv:0.8.13 /uv /usr/local/bin/uv
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project
 
+COPY app ./app
+COPY src ./src
+COPY data ./data
 
-# Copy project files
-COPY . .
+RUN mkdir -p /app/data/feedback /app/.cache/huggingface
 
-
-# Install Python dependencies
-RUN uv pip install --system \
-    streamlit \
-    pandas \
-    plotly \
-    matplotlib \
-    psycopg \
-    pgvector \
-    sentence-transformers \
-    pydantic \
-    python-dotenv \
-    openai
-
-
-# Expose Streamlit port
 EXPOSE 8501
 
-
-# Set environment variables
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
-ENV STREAMLIT_SERVER_PORT=8501
-ENV STREAMLIT_SERVER_HEADLESS=true
-
-
-# Run Streamlit
-CMD ["streamlit", "run", "app/home.py"]
+CMD ["uv", "run", "streamlit", "run", "app/home.py", "--server.fileWatcherType=none"]

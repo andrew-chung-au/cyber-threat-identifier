@@ -14,6 +14,8 @@ It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and 
 > - An analyst-facing Streamlit UI and monitoring dashboard are implemented with four tabs: Home, Query, Dashboard, and Evaluation Review.
 > - Feedback persistence is implemented; an empty feedback chart means no feedback has yet been submitted.
 > - A frozen held-out external benchmark remains in progress.
+> - Docker Compose is the canonical local execution path for the application and automated ingestion.
+> - Completed evaluation artefacts are committed for inspection so markers can review evidence and dashboard charts without rerunning API-bound jobs.
 
 ---
 
@@ -56,6 +58,7 @@ Version 1 focuses on a narrow incident-to-technique task: given an incident narr
 - Manual review of all 55 judge-disagreement cases blind to model identity.
 - Streamlit analyst-facing UI and monitoring dashboard with four tabs: Home, Query, Dashboard, and Evaluation Review.
 - Persisted feedback capture linked to query, answer, model, and retrieved techniques.
+- Docker Compose configuration for PostgreSQL, Streamlit, and automated ingestion.
 
 ### Out of scope
 
@@ -67,6 +70,52 @@ Version 1 focuses on a narrow incident-to-technique task: given an incident narr
 - Confirming that a technique definitively occurred in an incident.
 - ATT&CK groups, software, campaigns, mitigations, relationships, detection content, and data sources as primary retrieval units.
 - External incident reports or vendor intelligence as primary retrieval corpus records.
+
+---
+
+## Marker quickstart
+
+### Prerequisites
+
+- Docker Desktop or compatible Docker Engine
+- Git
+- A Gemini API key only if you want to run generated answers in the Query tab
+
+### Run the complete local stack
+
+```bash
+git clone <repository-url>
+cd cyber-threat-identifier
+cp .env.example .env
+```
+
+Add `LLM_API_KEY` to `.env` to enable answer generation. Retrieval and dashboard inspection can still be explored without it.
+
+```bash
+make up
+make ingest
+```
+
+Open [http://localhost:8501](http://localhost:8501).
+
+### Verify the build
+
+```bash
+docker compose ps
+
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "SELECT COUNT(*) AS techniques, COUNT(embedding) AS embeddings FROM techniques;"
+```
+
+Expected result: PostgreSQL is healthy, Streamlit is running, and all loaded ATT&CK technique records have embeddings.
+
+### Stop the stack
+
+```bash
+make down
+```
 
 ---
 
@@ -188,6 +237,8 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
   - Evaluation Review tab for manual adjudication of judge-disagreement cases.
 - Persisted feedback capture through `src.monitoring.feedback_store.save_feedback`.
 - Application Dockerfile for Streamlit (`app/Dockerfile`).
+- Docker Compose configuration for PostgreSQL, Streamlit, and automated ingestion (`compose.yaml`).
+- Committed evaluation artefacts for marker inspection under DEC-023.
 
 ### Planned
 
@@ -199,7 +250,7 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 
 ---
 
-## Quick start
+## Developer rebuild and evaluation
 
 ### Prerequisites
 
@@ -421,7 +472,7 @@ cyber-threat-identifier/
 |---|---|
 | [`docs/runbook.md`](docs/runbook.md) | Setup, pipeline commands, verification, rebuilds, benchmarks, answer-generation, LLM-as-judge evaluation, manual review, UI, and troubleshooting |
 | [`docs/dataset-notes.md`](docs/dataset-notes.md) | Corpus scope, provenance, schema, processing rules, artefact policy, and limitations |
-| [`docs/decisions.md`](docs/decisions.md) | Stable architecture, corpus, retrieval, and evaluation decisions (e.g. DEC‑017, DEC‑018, DEC‑019, DEC‑020, DEC‑021) |
+| [`docs/decisions.md`](docs/decisions.md) | Stable architecture, corpus, retrieval, and evaluation decisions (e.g. DEC‑017, DEC‑018, DEC‑019, DEC‑020, DEC‑021, DEC‑022, DEC‑023) |
 | [`docs/evaluation-notes.md`](docs/evaluation-notes.md) | Benchmark design, metrics, retrieval results, answer evaluation, LLM-as-judge analysis, manual review, and failure analysis |
 | [`docs/project-log.md`](docs/project-log.md) | Chronological progress, discoveries, and immediate next steps |
 

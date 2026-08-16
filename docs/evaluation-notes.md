@@ -12,6 +12,8 @@ Measure whether the system can retrieve and present plausible Enterprise MITRE A
 
 The system is intended to support analyst review. It does not confirm adversary activity, perform incident triage, assign attribution, or replace human judgement.
 
+The current evaluation evidence supports internal model and retrieval configuration choices; it does not establish general cyber-security retrieval performance or production readiness.
+
 ---
 
 ## Evaluation approach
@@ -42,7 +44,7 @@ The benchmark input file is:
 data/eval/expert_retrieval_cases.csv
 ```
 
-The current benchmark contains 226 cases assembled from the upstream Expert development and test splits. It is useful for implementation comparisons but is not a frozen held-out benchmark.
+The current benchmark contains 226 cases assembled from the upstream Expert development and test splits. It is an **implementation-comparison set**, not a frozen held-out benchmark. It mixes development- and test-derived cases and is used to compare retrieval configurations under the same corpus and case set.
 
 The retrieval unit is one processed ATT&CK technique or sub-technique record. The corpus is not chunked.
 
@@ -76,16 +78,20 @@ The implemented retrieval methods are:
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
 
+
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
+
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
+
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
+
 
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --candidate-k 20 \
@@ -342,7 +348,9 @@ Each record includes, at minimum:
 
 Current outputs are suitable for qualitative inspection, checking that generated IDs remain within retrieved context, and designing the final answer-evaluation workflow.
 
-The pairwise LLM-as-judge comparison between `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` is complete, with judge outputs and agreement metrics integrated into the Streamlit monitoring dashboard (`app/dashboard.py`). A full rubric-scored human evaluation remains to be completed; this will focus on a sampled subset of the 55 judge-disagreement cases from the reranked evaluation (see below).
+The pairwise LLM-as-judge comparison between `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` is complete, with judge outputs and agreement metrics integrated into the Streamlit monitoring dashboard (`app/dashboard.py`). All 55 reranked judge-disagreement cases have been manually reviewed blind to model identity and informed the selection of `gemini-3.1-flash-lite` as the v1 default answer-generation model (DEC-021).
+
+A full rubric-scored human evaluation over a frozen held-out external benchmark remains future work. That evaluation will use curation rules frozen on `expert_dev.tsv` and applied to the held-out `expert_test.tsv` split, not the current 226-case implementation-comparison set.
 
 ---
 
@@ -403,6 +411,7 @@ uv run python -m src.evaluation.run_llm_judge_pairwise \
   --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
   --judge-model gemini-3.1-flash-lite \
   --output data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
+
 
 uv run python -m src.evaluation.run_llm_judge_pairwise \
   --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
@@ -499,7 +508,7 @@ The final model-selection decision is documented in DEC-021.
 
 - LLM judges are not ground truth; they provide a scalable comparative signal. Cross-judge agreement (~75%) helps quantify reliability but does not eliminate judge bias.
 - Both judges favour `gemini-3.1-flash-lite` on this dataset, but without manual review the preference magnitudes should be treated as advisory rather than definitive.
-- The 226-case set is still an internal expert-derived dataset, not a frozen held-out external benchmark.
+- The 226-case set is an internal expert-derived implementation-comparison set, not a frozen held-out external benchmark.
 - Free-tier API limits introduce slow, long-running judge jobs; checkpointing mitigates this but further runs may need adjusted limits or scheduling.
 - The manual review covered all 55 reranked disagreements; the 32.7% tie rate indicates substantial practical overlap between the models.
 
@@ -591,6 +600,13 @@ Fields: text1, labels
 ```
 
 The upstream repository remains local and ignored during feasibility work. Raw narratives must not be committed publicly unless redistribution, provenance, and attribution treatment are explicitly resolved.
+
+The exact upstream revision used for the current committed evaluation artefacts is:
+
+```text
+Revision: a16856a6438ca2b7888c5cadfba6d7c854f04a55
+Licence declared by upstream: CC BY 4.0
+```
 
 ### Split policy
 
@@ -739,6 +755,8 @@ Reranked evaluation artefacts (v1):
 - `data/evaluation_reports/reranked/judge_disagreements.csv`
 - `data/evaluation_reports/reranked/manual_review_results.csv`
 
+These artefacts are committed for marker inspection under DEC-023. They allow the evaluation evidence and dashboard charts to be inspected without rerunning API-bound jobs.
+
 Do not commit reports containing external narrative text unless redistribution permissions have been reviewed. Public artefacts should prefer aggregate metrics, source references, case identifiers or hashes where appropriate, and derived diagnostics that do not reproduce upstream narratives.
 
 ---
@@ -816,3 +834,4 @@ State whether this is an experiment-specific observation or a stable decision re
 - Use development data for selection; use held-out test data only after choices are frozen.
 - Record corpus version, source revision, embedding model, reranker model, prompt version, candidate pool, top-k, and generation settings for reported experiments.
 - Do not report repeatedly tuned development results as general system performance.
+- Treat the current 226-case set as an implementation-comparison set, not as a frozen held-out benchmark.

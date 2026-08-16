@@ -2,29 +2,60 @@
 
 ## Purpose
 
-This runbook explains how to reproduce the current Cyber Threat Identifier ingestion, database, embedding, retrieval-benchmark, document-reranking, query-rewriting, answer-generation, LLM-evaluation, manual-review, feedback, and Streamlit UI baselines from a clean checkout.
+This runbook explains how to reproduce and operate the current **Cyber Threat Identifier** v1 system from a clean checkout.
 
 It covers:
 
-- Environment setup
-- Local PostgreSQL with pgvector
-- ATT&CK data download and extraction
-- Database loading and embedding generation
-- Basic verification
-- Retrieval benchmark execution: text, vector, hybrid, vector-plus-reranking, and query-rewrite-plus-reranking
+- Environment setup and required configuration
+- Docker Compose startup for PostgreSQL with pgvector and Streamlit
+- Automated ATT&CK ingestion, extraction, database loading, and embedding generation
+- Database, embedding, and application connectivity verification
+- Retrieval benchmark execution: text, vector, hybrid, reranked vector, and query-rewrite-plus-rerank
 - Local cross-encoder reranker setup and verification
-- Query-rewriting benchmark execution with optional rate limiting
 - Reranked answer-generation comparison
 - Reciprocal pairwise LLM-as-judge evaluation and agreement analysis
 - Blinded manual review of judge-disagreement cases
-- Streamlit UI, persisted feedback, and monitoring dashboard execution
-- External benchmark repository inspection
-- External Expert-label compatibility validation
-- Local development reset and troubleshooting
+- Streamlit Query, Dashboard, Evaluation Review, and feedback workflows
+- External benchmark inspection and Expert-label compatibility validation
+- Reset, rebuild, and troubleshooting procedures
 
-For corpus scope, provenance, schema, and committed-data policy, see [`dataset-notes.md`](dataset-notes.md).  
+For corpus scope, provenance, schema, and data-artifact policy, see [`dataset-notes.md`](dataset-notes.md).  
 For stable design decisions, see [`decisions.md`](decisions.md).  
-For benchmark design, evaluation rules, and results, see [`evaluation-notes.md`](evaluation-notes.md).
+For benchmark design, metrics, results, and limitations, see [`evaluation-notes.md`](evaluation-notes.md).  
+For chronological implementation history, see [`project-log.md`](project-log.md).
+
+---
+
+## Quick start
+
+For the normal local application path, run:
+
+```bash
+cp .env.example .env
+# Edit .env and add LLM_API_KEY if you want generated answers.
+
+make up
+make ingest
+```
+
+Then open:
+
+```text
+http://localhost:8501
+```
+
+`make up` starts PostgreSQL with pgvector and the Streamlit application.  
+`make ingest` runs the complete source-to-vector ingestion pipeline through Docker Compose.
+
+After a successful clean ingestion run, the database should contain:
+
+```text
+total_techniques | embedded_techniques | missing_embeddings
+-----------------+---------------------+------------------
+697              | 697                 | 0
+```
+
+The first ingestion run downloads the ATT&CK source data and local embedding model, so it may take several minutes. Later runs reuse the persisted model cache.
 
 ---
 
@@ -32,48 +63,33 @@ For benchmark design, evaluation rules, and results, see [`evaluation-notes.md`]
 
 Install:
 
-- The Python version specified in `pyproject.toml`
-- `uv`
-- Docker Desktop
 - Git
+- Docker Desktop, including Docker Compose
+- `uv` and the Python version declared in `pyproject.toml` only if you will run host-side developer, benchmark, or evaluation commands
 
-Check local tools:
+Check the available tools:
 
 ```bash
-python --version
-uv --version
+git --version
 docker --version
 docker compose version
+uv --version
+python --version
 ```
 
-Run all commands below from the repository root.
-
-The current reranking and query-rewriting benchmarks are designed for local CPU execution. A GPU and ONNX runtime are not required for the current implementation.
-
----
-
-## Setup
-
-Clone the repository:
+Run all commands from the repository root:
 
 ```bash
-git clone <repository-url>
 cd cyber-threat-identifier
 ```
 
-Create the environment and install locked dependencies:
+The current reranking implementation is designed for local CPU execution. GPU hardware and ONNX Runtime are not required for v1.
 
-```bash
-uv sync
-```
+---
 
-Install Streamlit and plotting dependencies if they are not already included in the locked environment:
+## Configuration
 
-```bash
-make install
-# or equivalently:
-uv pip install streamlit plotly matplotlib
-```
+### Create `.env`
 
 Create a local environment file:
 
@@ -81,185 +97,236 @@ Create a local environment file:
 cp .env.example .env
 ```
 
-The default local database connection is:
+Do not commit `.env` or disclose its API key values.
+
+The selected v1 answer-generation model is:
+
+```dotenv
+MODEL_ID=gemini-3.1-flash-lite
+```
+
+To enable answer generation, query rewriting, and LLM-as-judge workflows, configure Gemini through the OpenAI-compatible endpoint:
+
+```dotenv
+LLM_API_KEY=<your-gemini-api-key>
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+```
+
+The answer-comparison and reciprocal-judge workflows also use:
+
+```text
+gemini-3.5-flash-lite
+```
+
+as an evaluated alternative and judge model.
+
+### Database URLs
+
+The host-side default connection is:
 
 ```dotenv
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cyber_threat_identifier
 ```
 
-Set LLM configuration in `.env`. Do not commit `.env`.
-
-The selected v1 default answer-generation model is Gemini 3.1 Flash-Lite:
-
-```dotenv
-MODEL_ID=gemini-3.1-flash-lite
-LLM_API_KEY=<your-gemini-api-key>
-LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-```
-
-The answer-generation comparison and pairwise judging workflows also use `gemini-3.5-flash-lite` as an evaluated alternative and reciprocal judge.
-
-Do not commit `.env` or share API keys.
+Docker Compose services use the Compose network and connect to PostgreSQL through the `postgres` service hostname rather than `localhost`.
 
 ---
 
-## Start the database
+## Docker Compose operation
 
-Start local PostgreSQL with pgvector:
+### Start the stack
+
+Start PostgreSQL and Streamlit:
 
 ```bash
-make docker-up
-# or equivalently:
+make up
+```
+
+Equivalent Compose command:
+
+```bash
 docker compose up -d
 ```
 
-Check service status:
+Check service health:
 
 ```bash
 docker compose ps
 ```
 
-Wait until the `postgres` service reports a healthy status before running database or benchmark commands.
+Wait for the `postgres` service to become healthy before running host-side database operations or benchmarks.
 
-If the service remains in `health: starting`, wait a few seconds and run:
-
-```bash
-docker compose ps
-```
-
-If `psql` is available locally, verify the connection:
+View logs when needed:
 
 ```bash
-psql "$DATABASE_URL" -c "SELECT 1;"
+docker compose logs -f postgres
+docker compose logs -f streamlit
 ```
 
-If `psql` is not installed locally, run the check inside the container:
+### Stop the stack
+
+Stop containers while retaining the database and model-cache volumes:
+
+```bash
+make down
+```
+
+Equivalent command:
+
+```bash
+docker compose down
+```
+
+### Open the application
+
+After `make up`, open:
+
+```text
+http://localhost:8501
+```
+
+The application includes:
+
+- **Home** — project scope, ATT&CK attribution, architecture, and configured system information
+- **Query** — incident narrative analysis, reranked retrieval, structured answer generation, evidence inspection, and feedback capture
+- **Dashboard** — evaluation metrics, judge preferences, retrieval comparison, agreement rate, and user feedback
+- **Evaluation Review** — blinded manual review of LLM-judge disagreement cases
+
+---
+
+## Automated ingestion
+
+### Canonical ingestion path
+
+Run the complete ingestion workflow through Docker Compose:
+
+```bash
+make ingest
+```
+
+The `ingest` Compose profile performs:
+
+```text
+Download ATT&CK STIX source
+  → Extract active Enterprise techniques and sub-techniques
+  → Initialise PostgreSQL and pgvector schema
+  → Load processed technique records
+  → Generate local embedding vectors
+```
+
+The ingestion service runs the locked environment through `uv run python` and exits immediately if a stage fails.
+
+The equivalent direct Compose command is:
+
+```bash
+docker compose --profile ingest run --rm ingest
+```
+
+### Generated artefacts
+
+The automated pipeline writes or updates:
+
+```text
+data/raw/attack/                      Raw ATT&CK download; ignored by Git
+data/source_manifest.csv              Download provenance and checksums
+data/processed/techniques.jsonl       Processed inspectable corpus snapshot
+PostgreSQL techniques table           Canonical loaded technique records
+PostgreSQL ingestion_runs table       Pipeline audit records
+```
+
+### Pinned source option
+
+The default acquisition reference is the current upstream `master` branch. For a reproducible source baseline, use a pinned tag or commit through the host-side command:
+
+```bash
+uv run python -m src.ingestion.download_attack_data \
+  --ref <release-tag-or-commit>
+```
+
+Then run extraction, database initialisation, loading, and embedding generation as described in [Host-side pipeline commands](#host-side-pipeline-commands).
+
+Do not describe results as formally comparable across time unless the ATT&CK source reference is pinned and recorded.
+
+---
+
+## Verify the build
+
+Run these checks after `make ingest`, particularly after a clean rebuild.
+
+### Check processed corpus records
+
+```bash
+wc -l data/processed/techniques.jsonl
+```
+
+### Check PostgreSQL connectivity
 
 ```bash
 docker compose exec postgres \
   psql -U postgres -d cyber_threat_identifier -c "SELECT 1;"
 ```
 
----
-
-## Build the ATT&CK corpus
-
-Run each stage in order when building from a clean checkout.
-
-### 1. Download ATT&CK data
-
-Download the default upstream reference:
+### Check tables and pgvector
 
 ```bash
-uv run python -m src.ingestion.download_attack_data
+docker compose exec postgres \
+  psql -U postgres -d cyber_threat_identifier -c "\dt"
 ```
-
-For a fixed release baseline, use a pinned upstream tag or commit:
 
 ```bash
-uv run python -m src.ingestion.download_attack_data --ref <release-tag-or-commit>
+docker compose exec postgres \
+  psql -U postgres -d cyber_threat_identifier -c "
+    SELECT extname
+    FROM pg_extension
+    WHERE extname = 'vector';
+  "
 ```
 
-The downloader writes raw STIX files to:
+### Check loaded and embedded record counts
+
+```bash
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      COUNT(*) AS total_techniques,
+      COUNT(embedding) AS embedded_techniques,
+      COUNT(*) - COUNT(embedding) AS missing_embeddings
+    FROM techniques;
+  "
+```
+
+Expected clean-build result:
 
 ```text
-data/raw/attack/
+ total_techniques | embedded_techniques | missing_embeddings
+------------------+---------------------+--------------------
+              697 |                 697 |                  0
 ```
 
-It appends source provenance to:
-
-```text
-data/source_manifest.csv
-```
-
-### 2. Extract active techniques
-
-Extract active Enterprise ATT&CK techniques and sub-techniques:
+### Check the application container database connection
 
 ```bash
-uv run python -m src.ingestion.extract_attack_techniques
-```
+docker compose exec streamlit sh -lc '
+  uv run python -c "
+from src.database.db_connection import get_connection
 
-Expected output:
-
-```text
-data/processed/techniques.jsonl
-```
-
-### 3. Initialise the database
-
-Create project tables and enable pgvector:
-
-```bash
-uv run python -m src.database.db_init
-```
-
-### 4. Load technique records
-
-Load processed technique records into PostgreSQL:
-
-```bash
-uv run python -m src.database.db_load_techniques
-```
-
-This stage loads canonical technique fields and creates structured `embedding_text`. It does not generate embedding vectors.
-
-### 5. Build embeddings
-
-Generate vectors for loaded technique records:
-
-```bash
-uv run python -m src.database.db_build_embeddings
-```
-
-Optionally create an HNSW index for later vector-search performance experiments:
-
-```bash
-uv run python -m src.database.db_build_embeddings \
-  --create-hnsw-index
-```
-
-HNSW is optional. Exact cosine-distance search remains a valid and reproducible baseline for the current compact ATT&CK corpus.
-
----
-
-## Verify the build
-
-Check that processed records exist:
-
-```bash
-wc -l data/processed/techniques.jsonl
-```
-
-Check database tables:
-
-```bash
-psql "$DATABASE_URL" -c "\dt"
-```
-
-Check that the pgvector extension is enabled:
-
-```bash
-psql "$DATABASE_URL" -c "
-SELECT extname
-FROM pg_extension
-WHERE extname = 'vector';
+with get_connection() as connection:
+    with connection.cursor() as cursor:
+        cursor.execute(\"SELECT COUNT(*) FROM techniques\")
+        print(\"Technique count:\", cursor.fetchone())
 "
+'
 ```
 
-Check loaded and embedded record counts:
+Expected result:
 
-```bash
-psql "$DATABASE_URL" -c "
-SELECT
-  COUNT(*) AS total_techniques,
-  COUNT(embedding) AS embedded_techniques,
-  COUNT(*) - COUNT(embedding) AS missing_embeddings
-FROM techniques;
-"
+```text
+Technique count: 697
 ```
 
-Preview one structured record used for vector retrieval and reranking:
+### Preview retrieval and reranker text
 
 ```bash
 docker compose exec postgres psql \
@@ -276,20 +343,23 @@ docker compose exec postgres psql \
   "
 ```
 
-Check the most recent pipeline audit entries:
+### Check recent pipeline audits
 
 ```bash
-psql "$DATABASE_URL" -c "
-SELECT
-  stage,
-  status,
-  records_processed,
-  started_at,
-  completed_at
-FROM ingestion_runs
-ORDER BY id DESC
-LIMIT 10;
-"
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      stage,
+      status,
+      records_processed,
+      started_at,
+      completed_at
+    FROM ingestion_runs
+    ORDER BY id DESC
+    LIMIT 10;
+  "
 ```
 
 A successful build has:
@@ -297,13 +367,86 @@ A successful build has:
 - A non-empty `data/processed/techniques.jsonl`
 - `techniques` and `ingestion_runs` tables
 - The `vector` extension enabled
-- One loaded database row per processed technique record
-- No missing embedding vectors after embedding generation
+- One loaded database record per processed technique record
+- No missing embeddings after the embedding stage
 - Non-empty `embedding_text` values available for retrieval and reranking
+- A Streamlit-container database connection that can query `techniques`
 
 ---
 
-## Verify the local reranker
+## Host-side pipeline commands
+
+Use this section only for development, targeted debugging, source pinning, or running individual stages. For standard local setup, prefer `make ingest`.
+
+First install the locked host-side environment:
+
+```bash
+uv sync
+```
+
+Start PostgreSQL if it is not already running:
+
+```bash
+make up
+```
+
+### 1. Download ATT&CK data
+
+```bash
+uv run python -m src.ingestion.download_attack_data
+```
+
+For a fixed baseline:
+
+```bash
+uv run python -m src.ingestion.download_attack_data \
+  --ref <release-tag-or-commit>
+```
+
+### 2. Extract active techniques
+
+```bash
+uv run python -m src.ingestion.extract_attack_techniques
+```
+
+Expected output:
+
+```text
+data/processed/techniques.jsonl
+```
+
+### 3. Initialise the database
+
+```bash
+uv run python -m src.database.db_init
+```
+
+### 4. Load technique records
+
+```bash
+uv run python -m src.database.db_load_techniques
+```
+
+This stage loads canonical technique fields and constructs structured `embedding_text`. It does not generate embedding vectors.
+
+### 5. Build embeddings
+
+```bash
+uv run python -m src.database.db_build_embeddings
+```
+
+Optionally create an HNSW index for an explicitly documented performance experiment:
+
+```bash
+uv run python -m src.database.db_build_embeddings \
+  --create-hnsw-index
+```
+
+HNSW is optional. Exact cosine-distance search remains the reproducible v1 baseline for the compact ATT&CK corpus.
+
+---
+
+## Verify the reranker
 
 The selected reranker is:
 
@@ -311,9 +454,9 @@ The selected reranker is:
 cross-encoder/ms-marco-MiniLM-L-6-v2
 ```
 
-It runs locally on CPU and is loaded through `sentence-transformers`.
+It runs locally on CPU through `sentence-transformers`.
 
-Run this smoke test before running the reranking benchmark or Streamlit query interface:
+Run this smoke test before reranking benchmarks or host-side Streamlit usage:
 
 ```bash
 uv run python -c "
@@ -324,35 +467,35 @@ print('Reranker loaded successfully')
 "
 ```
 
-On the first run, Hugging Face downloads the model into the local cache.
+On the first run, Hugging Face downloads the model into the local cache. Docker Compose persists a separate Hugging Face cache volume for container-based operation.
 
-A warning about unauthenticated Hugging Face Hub requests does not prevent the model from loading. Configure an `HF_TOKEN` only if rate limits or download reliability become a problem.
+An unauthenticated Hugging Face Hub warning does not necessarily prevent model loading. Configure `HF_TOKEN` only if download rate limits or reliability become a practical issue.
 
-The benchmark must fail if the reranker cannot load. Do not treat vector-only fallback as a valid reranking benchmark result.
+A reranking benchmark must fail if the reranker cannot load. Do not treat a vector-only fallback as a valid reranking benchmark result.
 
 ---
 
-## Run retrieval benchmarks
+## Retrieval benchmarks
 
-This section reproduces retrieval results over the current Expert-derived evaluation cases.
-
-The benchmark input file is:
+The benchmark input is:
 
 ```text
 data/eval/expert_retrieval_cases.csv
 ```
 
-The current benchmark contains 226 Expert-derived cases. It is used for implementation comparison and is not a frozen held-out final benchmark.
+The current file contains 226 Expert-derived cases. It is an implementation-comparison set that includes development- and test-derived records; it is **not** a frozen held-out final benchmark.
 
-The implemented methods are:
+The implemented retrieval methods are:
 
 - Text-only retrieval
 - Vector retrieval
 - Hybrid retrieval using Reciprocal Rank Fusion
-- Vector retrieval plus local cross-encoder document reranking
-- Query rewriting plus vector retrieval plus reranking
+- Vector retrieval plus local cross-encoder reranking
+- Query rewriting plus vector retrieval and reranking
 
-### 1. Run text retrieval benchmark
+Run retrieval benchmarks from the host after `uv sync`, `make up`, and a successful ingestion build.
+
+### Text retrieval
 
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
@@ -364,7 +507,7 @@ Expected output:
 data/evaluation_reports/expert_text_retrieval_results.csv
 ```
 
-### 2. Run vector retrieval benchmark
+### Vector retrieval
 
 ```bash
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
@@ -378,7 +521,7 @@ Expected output:
 data/evaluation_reports/expert_vector_retrieval_results.csv
 ```
 
-### 3. Run hybrid retrieval benchmark
+### Hybrid retrieval
 
 ```bash
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
@@ -390,9 +533,9 @@ Expected output:
 data/evaluation_reports/expert_hybrid_retrieval_results.csv
 ```
 
-### 4. Run vector-plus-reranking benchmark
+### Vector-plus-reranking
 
-Run a small smoke test first:
+Run a smoke test first:
 
 ```bash
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
@@ -416,21 +559,23 @@ Expected output:
 data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
 ```
 
-The reranking benchmark uses this flow:
+The reranked retrieval flow is:
 
 ```text
 Incident narrative
   → all-MiniLM-L6-v2 query embedding
-  → top 20 pgvector candidates
-  → local CPU cross-encoder reranking
-  → top 10 ranked candidates for evaluation
+  → Top 20 pgvector candidates
+  → Local CPU cross-encoder reranking
+  → Top 10 ranked candidates for evaluation
 ```
 
-The CSV includes first-stage vector candidate IDs, original vector ranks, reranker scores, reranked ranks, and timing data.
+The report includes first-stage vector candidate IDs, original ranks, reranker scores, final ranks, and timing fields.
 
-### 5. Run query-rewrite retrieval benchmark
+### Query rewriting plus reranking
 
-Run a small smoke test first:
+This experiment requires valid LLM configuration in `.env`.
+
+Run a smoke test first:
 
 ```bash
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
@@ -439,7 +584,7 @@ uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --top-k 10
 ```
 
-Run the full benchmark with rate limiting:
+Run the full rate-limited benchmark:
 
 ```bash
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
@@ -448,7 +593,7 @@ uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
-Run without rate limiting only if the API plan supports a higher request rate:
+Disable rate limiting only if the API plan supports the request volume:
 
 ```bash
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
@@ -458,53 +603,55 @@ uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
 ```
 
-Expected output:
-
-```text
-data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
-```
-
-This file is written to `data/evaluation_reports/local/`, which is ignored by Git because it contains external narrative text.
-
-The query-rewriting benchmark uses this flow:
+The query-rewriting flow is:
 
 ```text
 Incident narrative
-  → LLM query rewriting (gemini-3.1-flash-lite)
+  → LLM query rewriting with gemini-3.1-flash-lite
   → all-MiniLM-L6-v2 query embedding
-  → top 20 pgvector candidates
-  → local CPU cross-encoder reranking
-  → top 10 ranked candidates for evaluation
+  → Top 20 pgvector candidates
+  → Local CPU cross-encoder reranking
+  → Top 10 ranked candidates for evaluation
 ```
 
-### Reference results
+The output is stored under `data/evaluation_reports/local/` because it may contain external narrative text and should remain local unless its redistribution status has been reviewed.
 
-Reference results for the current 226-case benchmark are recorded in [`evaluation-notes.md`](evaluation-notes.md).
+### Interpretation
 
-The selected v1 retrieval configuration is vector retrieval plus local cross-encoder reranking. It improved all reported metrics over vector-only retrieval in the current benchmark.
+Reference metrics are documented in [`evaluation-notes.md`](evaluation-notes.md).
 
-Do not describe these results as final held-out performance because the current benchmark contains development- and test-derived cases.
+The selected v1 retrieval configuration is vector retrieval plus local cross-encoder reranking. It improved every reported retrieval metric over vector-only retrieval in the current 226-case comparison.
+
+Do not describe these metrics as final held-out performance.
 
 ---
 
-## Run answer-generation comparison (reranked v1)
+## Answer-generation comparison
 
-The current answer-generation comparison uses vector retrieval plus local cross-encoder reranking as its retrieval backend.
+The current answer-generation comparison uses the selected reranked retrieval backend:
 
-The comparison evaluates:
+```text
+Incident narrative
+  → Top 20 vector candidates
+  → Local cross-encoder reranking
+  → Top 5 ATT&CK records as answer context
+  → Structured answer generation
+```
+
+The compared models are:
 
 ```text
 gemini-3.1-flash-lite
 gemini-3.5-flash-lite
 ```
 
-The selected v1 runtime default is:
+The selected runtime default is:
 
 ```text
 gemini-3.1-flash-lite
 ```
 
-### 1. Verify LLM configuration
+### Verify LLM configuration
 
 ```bash
 uv run python - <<'PY'
@@ -516,15 +663,13 @@ print("Client initialised:", type(client).__name__)
 PY
 ```
 
-### 2. Generate both models' reranked answers
-
-Run the complete comparison:
+### Run the comparison
 
 ```bash
 uv run python -m src.evaluation.run_expert_llm_comparison_reranked
 ```
 
-Run a smaller development smoke test if your script supports `--limit`:
+Use a small smoke test first if the script supports `--limit`:
 
 ```bash
 uv run python -m src.evaluation.run_expert_llm_comparison_reranked \
@@ -537,21 +682,23 @@ Expected output:
 data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
 ```
 
-The comparison output contains one structured answer per model per evaluation case, including evaluation metadata, retrieved ATT&CK IDs, selected candidates, grounding and uncertainty fields, review-required status, and available latency or token metadata.
+The output includes structured answers for both models, retrieved ATT&CK IDs, expected labels, selected candidates, answer summaries, uncertainty fields, review-required status, and available token and latency metadata.
 
-Inspect its first rows:
+Inspect the first rows:
 
 ```bash
 head -n 3 data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
 ```
 
+The completed artefact is committed for inspection. Re-run this API-bound comparison only when intentionally evaluating changed prompts, models, retrieval settings, or schemas.
+
 ---
 
-## Run pairwise LLM-as-judge evaluation
+## Pairwise LLM-as-judge evaluation
 
-This section reproduces DEC-020. It compares the two answer-generation models using reciprocal LLM judging under the reranked v1 retrieval configuration.
+This workflow reproduces the reciprocal pairwise evaluation recorded in DEC-020.
 
-### 1. Run 3.1 as judge
+### Run Gemini 3.1 Flash-Lite as judge
 
 ```bash
 uv run python -m src.evaluation.run_llm_judge_pairwise \
@@ -560,7 +707,7 @@ uv run python -m src.evaluation.run_llm_judge_pairwise \
   --judge-model gemini-3.1-flash-lite
 ```
 
-### 2. Run 3.5 as judge
+### Run Gemini 3.5 Flash-Lite as judge
 
 ```bash
 uv run python -m src.evaluation.run_llm_judge_pairwise \
@@ -569,18 +716,18 @@ uv run python -m src.evaluation.run_llm_judge_pairwise \
   --judge-model gemini-3.5-flash-lite
 ```
 
-The judge script:
+The script:
 
-- Randomly assigns underlying model outputs to Answer A and Answer B.
-- Shows the incident narrative, both answer summaries, and retrieved ATT&CK IDs.
-- Judges technique relevance, narrative grounding, uncertainty framing, analyst actionability, and conciseness.
-- Requires a structured verdict containing `reasoning`, `winner`, and `confidence`.
-- Maps the selected answer back to its model identifier.
-- Uses retry/backoff and checkpoints completed cases.
+- Randomises which underlying model appears as Answer A or Answer B
+- Presents the incident narrative, answer summaries, and retrieved ATT&CK IDs
+- Judges technique relevance, narrative grounding, uncertainty, actionability, and conciseness
+- Requires structured `reasoning`, `winner`, and `confidence` output
+- Maps Answer A or B back to the underlying model identity
+- Uses retries, backoff, and checkpointing
 
-If a judge run is interrupted or rate-limited, re-run the same command. Existing judged `eval_id` values are loaded from the output file and skipped.
+If a run is interrupted or rate-limited, re-run the same command. Existing completed `eval_id` records are loaded and skipped.
 
-### 3. Analyse judge agreement
+### Analyse agreement
 
 ```bash
 uv run python -m src.evaluation.analyze_judge_agreement \
@@ -595,7 +742,7 @@ data/evaluation_reports/reranked/judge_agreement_summary.csv
 data/evaluation_reports/reranked/judge_disagreements.csv
 ```
 
-The current completed reranked run contains:
+The completed evaluation reported:
 
 | Measure | Result |
 |---|---:|
@@ -609,7 +756,7 @@ The current completed reranked run contains:
 | 3.5-as-judge preferred 3.1 | 142 / 226 |
 | 3.5-as-judge preferred 3.5 | 84 / 226 |
 
-Inspect the stored summary without changing any results:
+Inspect the stored summary without creating new API calls:
 
 ```bash
 uv run python - <<'PY'
@@ -624,11 +771,11 @@ PY
 
 ---
 
-## Run manual review of judge disagreements
+## Manual review workflow
 
-This section explains how to create manual-review queues, use the blinded review workflow, and summarise saved outcomes.
+The Streamlit Evaluation Review workflow supports blinded human adjudication of reciprocal-judge disagreement cases.
 
-### 1. Build the reranked manual-review queue
+### Build the reranked review queue
 
 ```bash
 uv run python -m src.evaluation.build_manual_review_queue \
@@ -637,7 +784,9 @@ uv run python -m src.evaluation.build_manual_review_queue \
   --output data/evaluation_reports/reranked/manual_review_queue.csv
 ```
 
-### 2. Build the vector-only baseline queue
+### Build the vector-only baseline queue
+
+This is a diagnostic historical baseline, not the deployed v1 configuration:
 
 ```bash
 uv run python -m src.evaluation.build_manual_review_queue \
@@ -646,46 +795,50 @@ uv run python -m src.evaluation.build_manual_review_queue \
   --output data/evaluation_reports/vector/manual_review_queue.csv
 ```
 
-The queues enrich judge-disagreement cases with:
+The queue includes:
 
 - Incident narrative
 - Expected ATT&CK labels and definitions
 - Retrieved ATT&CK context
-- Blinded structured answers
-- Deterministic Answer A/B model randomisation
-- Both judges' reasoning and confidence values, hidden until a manual decision is saved
+- Blinded Answer A and Answer B outputs
+- Stable Answer A/B randomisation
+- Judge rationales and confidence values, hidden until review submission
 
-### 3. Run the review interface
+### Run the review interface
 
-Run the standalone review page:
+Use the main application:
 
 ```bash
-PYTHONPATH=. uv run streamlit run app/evaluation.py --server.fileWatcherType=none
+make up
 ```
 
-Alternatively, run the main app and open the **Evaluation Review** tab:
+Then open the **Evaluation Review** tab.
+
+For host-side standalone development:
 
 ```bash
-make app
+PYTHONPATH=. uv run streamlit run app/evaluation.py \
+  --server.fileWatcherType=none
 ```
 
 The reviewer:
 
-- Selects the reranked v1 or vector-only dataset.
-- Views the incident narrative, expected labels, and retrieved context.
-- Compares blinded Answer A and Answer B.
-- Selects **Answer A**, **Answer B**, or **Tie**.
-- Optionally records failure modes and review notes.
-- Saves the decision before model identities and judge rationales are revealed.
+1. Selects the reranked v1 or vector-only dataset.
+2. Reviews the narrative, expected labels, and retrieved evidence.
+3. Compares blinded Answer A and Answer B.
+4. Selects **Answer A**, **Answer B**, or **Tie**.
+5. Optionally records failure-mode tags and notes.
+6. Saves the decision.
+7. Sees model identities and judge rationales only after saving.
 
-Results are written to:
+Saved outputs:
 
 ```text
 data/evaluation_reports/reranked/manual_review_results.csv
 data/evaluation_reports/vector/manual_review_results.csv
 ```
 
-### 4. Summarise manual-review results
+### Summarise review outcomes
 
 Reranked v1:
 
@@ -694,14 +847,14 @@ uv run python -m src.evaluation.summarize_manual_review \
   --results data/evaluation_reports/reranked/manual_review_results.csv
 ```
 
-Vector-only baseline:
+Vector-only diagnostic baseline:
 
 ```bash
 uv run python -m src.evaluation.summarize_manual_review \
   --results data/evaluation_reports/vector/manual_review_results.csv
 ```
 
-The current reranked v1 manual review found:
+The completed reranked v1 review found:
 
 | Measure | Result |
 |---|---:|
@@ -713,97 +866,72 @@ The current reranked v1 manual review found:
 | 3.1 share of decisive wins | 56.8% |
 | 3.5 share of decisive wins | 43.2% |
 
-The manual-review result informed the selection of `gemini-3.1-flash-lite` as the default v1 answer-generation model in DEC-021.
+This evidence informed the selection of `gemini-3.1-flash-lite` as the v1 default answer-generation model.
+
+Do not overwrite completed review files without first making a backup:
+
+```bash
+cp data/evaluation_reports/reranked/manual_review_results.csv \
+  data/evaluation_reports/reranked/manual_review_results.backup.csv
+```
 
 ---
 
-## Run the Streamlit UI and monitoring dashboard
+## Streamlit interface and dashboard
 
-### 1. Pre-requisites
-
-Ensure you have:
-
-- Completed the environment setup.
-- Installed Streamlit and plotting dependencies.
-- A running database with embeddings for the Query tab.
-- The reranker model available locally.
-- LLM configuration in `.env` for generated answers.
-- Evaluation artefacts available if you want all dashboard charts to render:
-  - `data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv`
-  - `data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv`
-  - `data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv`
-  - `data/evaluation_reports/reranked/judge_agreement_summary.csv`
-
-If an evaluation file is missing, the affected chart displays an error rather than failing the whole app.
-
-### 2. Run the main application
-
-```bash
-make app
-# or equivalently:
-PYTHONPATH=. uv run streamlit run app/home.py --server.fileWatcherType=none
-```
-
-The app opens at `http://localhost:8501`, unless `.env` configures a different `STREAMLIT_PORT`.
-
-The main application includes:
-
-- **Home** — project overview, data-source links, ATT&CK attribution, and system information.
-- **Query** — incident narrative input, vector retrieval plus cross-encoder reranking, structured answer generation, retrieved-technique inspection, and feedback capture.
-- **Dashboard** — answer-generation latency, reciprocal judge preferences, retrieval comparison, agreement rate, and collected user feedback.
-- **Evaluation Review** — blinded adjudication of judge-disagreement cases for reranked and vector-only evaluation sets.
-
-### 3. Query workflow
+### Query workflow
 
 The Query tab:
 
 1. Accepts a pasted incident narrative or a sample query.
 2. Embeds the narrative.
 3. Retrieves the top 20 vector candidates.
-4. Reranks candidates locally and returns the top 5.
-5. Generates a structured answer using the model specified by `MODEL_ID`.
-6. Displays the answer summary, grounding note, uncertainty note, and retrieved technique descriptions.
-7. Lets the user submit **Helpful** or **Not helpful** feedback.
+4. Reranks candidates locally.
+5. Uses the top 5 reranked records as answer context.
+6. Generates a structured answer using `MODEL_ID`.
+7. Displays the answer summary, grounding note, uncertainty note, and retrieved technique evidence.
+8. Allows **Helpful** or **Not helpful** feedback.
 
-Feedback is persisted by `src.monitoring.feedback_store.save_feedback` to:
+The Query tab requires:
+
+- A healthy PostgreSQL service
+- Loaded technique records and embeddings
+- A locally available reranker
+- Valid LLM configuration for answer generation
+
+### Feedback persistence
+
+Feedback is saved through `src.monitoring.feedback_store.save_feedback`:
 
 ```text
 data/feedback/feedback.csv
 ```
 
-Each feedback record includes the generated query ID, feedback type, configured model ID, query text, generated answer, and retrieved technique IDs.
+A feedback record includes:
 
-### 4. Dashboard contents
+- Query ID
+- Feedback type
+- Configured model ID
+- Original query text
+- Generated structured answer
+- Retrieved ATT&CK technique IDs
 
-Run the dashboard as a standalone page:
+Runtime feedback remains local and is not treated as representative production-quality evidence.
 
-```bash
-make dashboard
-# or equivalently:
-PYTHONPATH=. uv run streamlit run app/dashboard.py --server.fileWatcherType=none
-```
+### Dashboard charts
 
-The dashboard shows:
+The Dashboard displays six charts:
 
-1. **Answer Generation Latency Distribution**  
-   Reads latency values from `expert_llm_comparison_reranked_v1.csv`.
+1. **Answer Generation Latency Distribution**
+2. **Judge Preferences: Gemini 3.5 Flash-Lite as Judge**
+3. **Judge Preferences: Gemini 3.1 Flash-Lite as Judge**
+4. **Retrieval Method Comparison (MRR & Hit@3)**
+5. **Judge Agreement Rate**
+6. **User Feedback Distribution**
 
-2. **Judge Preferences: Gemini 3.5 Flash-Lite as Judge**  
-   Shows how the 3.5 judge ranked the two candidate models.
+The dashboard reads completed answer-generation and judge artefacts where available. If a required artefact is missing, the relevant chart should report that problem without failing the full app.
 
-3. **Judge Preferences: Gemini 3.1 Flash-Lite as Judge**  
-   Shows how the 3.1 judge ranked the two candidate models.
-
-4. **Retrieval Method Comparison**  
-   Compares MRR and Hit@3 for vector-only, vector-plus-reranking, and query-rewrite-plus-reranking.
-
-5. **Judge Agreement Rate**  
-   Shows agreement versus disagreement between the reciprocal judges.
-
-6. **User Feedback Distribution**  
-   Reads persisted `thumbs_up` and `thumbs_down` feedback from `data/feedback/feedback.csv`.
-
-The current retrieval-comparison values are defined directly in `app/dashboard.py` from the documented DEC-018 and DEC-019 results. Update those values whenever the documented benchmark baseline changes. They are not currently loaded dynamically from retrieval benchmark CSVs.
+The retrieval-comparison chart currently uses explicit accepted benchmark values in `app/dashboard.py`. It does not dynamically load retrieval benchmark CSV files. Update the constants if the accepted benchmark baseline changes.
 
 If no feedback has been submitted, the dashboard correctly displays:
 
@@ -811,53 +939,41 @@ If no feedback has been submitted, the dashboard correctly displays:
 No feedback collected yet. Use the main app to submit feedback!
 ```
 
-This message means no rows have yet been saved; it does not mean feedback persistence is unavailable.
+This is an empty-state message, not a feedback-store failure.
 
-### 5. Dockerised Streamlit app
+### Host-side Streamlit commands
 
-The repository contains `app/Dockerfile`, which builds a Streamlit image and starts:
-
-```text
-streamlit run app/home.py
-```
-
-Build the application image:
+Main app:
 
 ```bash
-docker build -f app/Dockerfile -t cyber-threat-identifier-app .
+PYTHONPATH=. uv run streamlit run app/home.py \
+  --server.fileWatcherType=none
 ```
 
-Run it against a PostgreSQL service reachable from the container. Supply required database and LLM environment variables explicitly:
+Dashboard only:
 
 ```bash
-docker run --rm -p 8501:8501 \
-  --env-file .env \
-  cyber-threat-identifier-app
+PYTHONPATH=. uv run streamlit run app/dashboard.py \
+  --server.fileWatcherType=none
 ```
 
-If `compose.yaml` defines an application service as well as PostgreSQL, use the repository's Compose command instead:
-
-```bash
-docker compose up --build
-```
-
-The Streamlit app needs access to PostgreSQL, a local or cached reranker model, and valid LLM credentials to fully support the Query tab.
+The recommended `--server.fileWatcherType=none` setting avoids noisy optional `torchvision` import warnings caused by Streamlit module inspection.
 
 ---
 
 ## External benchmark inspection
 
-This optional section supports feasibility work for the Security-TTP-Mapping Expert benchmark candidate. It is not part of ATT&CK ingestion.
+This optional workflow supports inspection and provenance validation of the Security-TTP-Mapping Expert dataset. It is not part of ATT&CK corpus ingestion.
 
-The local inspection directory is:
+The local clone directory is:
 
 ```text
 data/external_inspection/mitre-ttp-mapping/
 ```
 
-This directory must remain ignored by Git because it may contain externally sourced threat-report text.
+Keep this directory ignored by Git because it can contain externally sourced threat-report text.
 
-### Clone the candidate dataset
+### Clone the upstream repository
 
 ```bash
 mkdir -p data/external_inspection
@@ -866,25 +982,31 @@ git clone https://github.com/tumeteor/mitre-ttp-mapping.git \
   data/external_inspection/mitre-ttp-mapping
 ```
 
-Record the downloaded upstream revision:
+Record the exact revision:
 
 ```bash
 git -C data/external_inspection/mitre-ttp-mapping rev-parse HEAD
 ```
 
-### Build the current combined retrieval input
+The revision used for the current evaluation artefacts is:
 
-The current 226-case retrieval input is built from the upstream Expert development and test files:
+```text
+a16856a6438ca2b7888c5cadfba6d7c854f04a55
+```
+
+### Build combined retrieval cases
+
+The current 226-case implementation-comparison input combines Expert development and test cases:
 
 ```bash
 uv run python -m src.evaluation.build_expert_retrieval_cases
 ```
 
-This file supports implementation benchmarking only. Do not use it as a final held-out benchmark because it combines development- and test-derived records.
+Do not use this combined file as a final held-out benchmark.
 
 ### Validate Expert labels
 
-Validate upstream Expert labels against the local active ATT&CK corpus:
+Validate upstream labels against the active local ATT&CK corpus:
 
 ```bash
 uv run python -m src.evaluation.validate_external_expert_labels
@@ -896,7 +1018,7 @@ Expected report:
 data/evaluation_reports/expert_label_compatibility.csv
 ```
 
-Inspect labels that are not active:
+Inspect non-active labels:
 
 ```bash
 awk -F',' 'NR == 1 || $2 != "active"' \
@@ -907,79 +1029,54 @@ awk -F',' 'NR == 1 || $2 != "active"' \
 
 ## Rebuild from scratch
 
-Use this only when it is safe to delete the local database volume.
+Use this procedure only when it is safe to remove the local PostgreSQL and model-cache volumes.
+
+### Full Compose reset
 
 ```bash
-make docker-down
 docker compose down -v
-make docker-up
-
-uv run python -m src.database.db_init
-uv run python -m src.database.db_load_techniques
-uv run python -m src.database.db_build_embeddings
+make up
+make ingest
 ```
 
-To refresh the ATT&CK corpus first:
+This deletes local database data and model-cache volumes, then rebuilds the ATT&CK corpus, database records, and embeddings.
+
+Verify the result:
 
 ```bash
-uv run python -m src.ingestion.download_attack_data --ref <release-tag-or-commit>
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      COUNT(*) AS total_techniques,
+      COUNT(embedding) AS embedded_techniques,
+      COUNT(*) - COUNT(embedding) AS missing_embeddings
+    FROM techniques;
+  "
+```
+
+### Rebuild after a source refresh
+
+For an intentional ATT&CK refresh, pin a source reference where reproducibility matters:
+
+```bash
+uv run python -m src.ingestion.download_attack_data \
+  --ref <release-tag-or-commit>
+
 uv run python -m src.ingestion.extract_attack_techniques
-
 uv run python -m src.database.db_init
 uv run python -m src.database.db_load_techniques
 uv run python -m src.database.db_build_embeddings
 ```
 
-After corpus, retrieval, reranker, prompt, model, or evaluation-code changes, rerun the applicable benchmarks and evaluations:
-
-```bash
-uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
-
-uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
-  --top-k 10 \
-  --output data/evaluation_reports/expert_vector_retrieval_results.csv
-
-uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
-
-uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
-  --candidate-k 20 \
-  --top-k 10 \
-  --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
-
-uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
-  --candidate-k 20 \
-  --top-k 10 \
-  --output data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
-
-uv run python -m src.evaluation.run_expert_llm_comparison_reranked
-
-uv run python -m src.evaluation.run_llm_judge_pairwise \
-  --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
-  --output data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv \
-  --judge-model gemini-3.1-flash-lite
-
-uv run python -m src.evaluation.run_llm_judge_pairwise \
-  --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
-  --output data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv \
-  --judge-model gemini-3.5-flash-lite
-
-uv run python -m src.evaluation.analyze_judge_agreement \
-  --judge-31 data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv \
-  --judge-35 data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv
-```
-
-Rebuild manual-review queues only when needed. Do not overwrite completed queues or results without creating a backup first:
-
-```bash
-cp data/evaluation_reports/reranked/manual_review_results.csv \
-  data/evaluation_reports/reranked/manual_review_results.backup.csv
-```
-
-Rerun compatibility validation after any ATT&CK corpus refresh:
+After a corpus refresh, rerun compatibility validation:
 
 ```bash
 uv run python -m src.evaluation.validate_external_expert_labels
 ```
+
+Re-run retrieval, answer-generation, and review workflows only when an intentional change affects corpus content, retrieval, reranking, prompts, models, answer schemas, or evaluation logic.
 
 ---
 
@@ -987,58 +1084,115 @@ uv run python -m src.evaluation.validate_external_expert_labels
 
 ### `DATABASE_URL is not set`
 
-Create `.env` in the repository root:
+Create `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Confirm it contains a valid `DATABASE_URL`.
+Confirm it contains a valid host-side `DATABASE_URL`.
 
-### Database connection refused
+For Docker Compose, check the service environment configuration rather than changing the host-side URL to a Compose-only hostname.
 
-Start PostgreSQL and inspect status:
+---
+
+### PostgreSQL connection refused
+
+Start the stack and inspect its status:
 
 ```bash
-make docker-up
+make up
 docker compose ps
 ```
 
-Inspect startup logs if PostgreSQL is not healthy:
+Inspect PostgreSQL logs:
 
 ```bash
 docker compose logs postgres
 ```
 
-### Input file not found
+Wait until the service reports healthy before running host-side workflows.
 
-If `enterprise-attack.json` is missing:
+---
+
+### Docker Compose ingestion fails with missing Python dependencies
+
+The ingestion service must use the locked environment through `uv run python`.
+
+Check the service command in `compose.yaml` and ensure it does not invoke plain system `python`.
+
+Rebuild if the Docker image or dependency lock file changed:
+
+```bash
+docker compose build --no-cache
+make up
+make ingest
+```
+
+---
+
+### ATT&CK source or processed corpus is missing
+
+Download raw ATT&CK data:
 
 ```bash
 uv run python -m src.ingestion.download_attack_data
 ```
 
-If `techniques.jsonl` is missing:
+Extract processed records:
 
 ```bash
 uv run python -m src.ingestion.extract_attack_techniques
 ```
 
-If Expert retrieval cases are missing:
+For the full standard path, use:
 
 ```bash
-uv run python -m src.evaluation.build_expert_retrieval_cases
+make ingest
 ```
 
-### Reranker model cannot load
+---
 
-Confirm dependencies are installed:
+### Embeddings are missing
+
+Check the database:
+
+```bash
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      COUNT(*) AS total_techniques,
+      COUNT(embedding) AS embedded_techniques,
+      COUNT(*) - COUNT(embedding) AS missing_embeddings
+    FROM techniques;
+  "
+```
+
+Rebuild embeddings host-side:
+
+```bash
+uv run python -m src.database.db_build_embeddings
+```
+
+Or rerun the complete Compose ingestion workflow:
+
+```bash
+make ingest
+```
+
+---
+
+### Reranker cannot load
+
+Install the locked environment:
 
 ```bash
 uv sync
 ```
 
-Run the isolated reranker smoke test:
+Run the isolated smoke test:
 
 ```bash
 uv run python -c "
@@ -1049,31 +1203,32 @@ print('Reranker loaded successfully')
 "
 ```
 
-Check internet access for the initial Hugging Face download. Once the model has loaded successfully, it should be available through the local Hugging Face cache.
+Ensure internet access is available for the initial Hugging Face download. After a successful first load, the model should be available in the local or Compose cache.
 
-### Streamlit emits `torchvision` warnings
+Do not report vector-only fallback output as a reranking benchmark.
 
-Some Streamlit file-watcher configurations inspect optional image-processing modules inside `transformers`. If `torchvision` is not installed, this can produce repeated `ModuleNotFoundError: No module named 'torchvision'` tracebacks even when the text-retrieval app itself still works.
+---
 
-Use the recommended Streamlit command, which disables that file watcher:
+### Streamlit shows `torchvision` warnings
 
-```bash
-PYTHONPATH=. uv run streamlit run app/home.py --server.fileWatcherType=none
-```
+Some Streamlit file-watcher configurations inspect optional image dependencies inside `transformers`, producing warnings even though text retrieval and reranking work.
 
-If the application functions correctly, these warnings do not affect retrieval, answer generation, stored evaluation results, or feedback persistence.
-
-If you prefer to install the optional dependency:
+Use:
 
 ```bash
-uv pip install torchvision
+PYTHONPATH=. uv run streamlit run app/home.py \
+  --server.fileWatcherType=none
 ```
 
-### Query-rewriting benchmark runs slowly
+These warnings do not alter retrieval, answer generation, stored evaluation results, or feedback persistence when the application otherwise functions normally.
 
-The query-rewriting benchmark uses Gemini 3.1 Flash Lite with rate limiting at 15 requests/minute by default.
+---
 
-To disable rate limiting only if the API plan supports it:
+### Query-rewriting benchmark is slow
+
+The benchmark uses Gemini 3.1 Flash-Lite with rate limiting by default.
+
+Run without rate limiting only when the API plan supports it:
 
 ```bash
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
@@ -1082,109 +1237,127 @@ uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --no-rate-limit
 ```
 
-If queries fail with 429 errors, keep rate limiting enabled or reduce concurrency.
+If API responses return HTTP 429 errors, keep rate limiting enabled and rerun the job. The experiment is intentionally not part of the default interactive workflow because its latency is substantially higher than local reranking.
 
-### LLM API key not configured
+---
 
-If query rewriting, answer generation, or judging fails with authentication errors:
+### LLM authentication fails
 
-```bash
-grep -E "LLM_API_KEY|MODEL_ID|LLM_BASE_URL" .env
-```
-
-Ensure `.env` contains valid Gemini API credentials.
-
-### LLM judge output or agreement files missing
+Check local configuration without displaying the key value:
 
 ```bash
-ls -lh data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
-ls -lh data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv
-ls -lh data/evaluation_reports/reranked/judge_agreement_summary.csv
-ls -lh data/evaluation_reports/reranked/judge_disagreements.csv
+grep -E "^(MODEL_ID|LLM_BASE_URL|LLM_API_KEY)=" .env | sed 's/LLM_API_KEY=.*/LLM_API_KEY=<configured-or-empty>/'
 ```
 
-If a judge run failed with quota or rate-limit errors, rerun the same command. Checkpointing should skip completed cases.
+Confirm:
 
-### Manual-review output missing
+- `LLM_API_KEY` is configured
+- `LLM_BASE_URL` is correct
+- The selected model is available to the configured account
+- The account has available quota
+
+---
+
+### Judge outputs or agreement reports are missing
+
+Check expected files:
 
 ```bash
-ls -lh data/evaluation_reports/reranked/manual_review_queue.csv
-ls -lh data/evaluation_reports/reranked/manual_review_results.csv
+ls -lh \
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv \
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv \
+  data/evaluation_reports/reranked/judge_agreement_summary.csv \
+  data/evaluation_reports/reranked/judge_disagreements.csv
 ```
 
-If the queue does not exist, build it with `src.evaluation.build_manual_review_queue`.
+If a judge run was interrupted, rerun the original command. Checkpointing should skip completed cases.
 
-If results do not exist, open the **Evaluation Review** tab and complete the blinded review workflow.
+---
 
-### Streamlit dashboard charts show errors
+### Manual-review files are missing
 
-Confirm all required files exist:
+Check the review files:
 
 ```bash
-ls -lh data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv
-ls -lh data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
-ls -lh data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv
-ls -lh data/evaluation_reports/reranked/judge_agreement_summary.csv
+ls -lh \
+  data/evaluation_reports/reranked/manual_review_queue.csv \
+  data/evaluation_reports/reranked/manual_review_results.csv
 ```
 
-If a chart is missing, run the corresponding benchmark or evaluation workflow.
+If the queue is missing, rebuild it with `src.evaluation.build_manual_review_queue`.
+
+If results are missing, open the **Evaluation Review** tab and complete the blinded review workflow.
+
+---
+
+### Dashboard chart errors
+
+Check the required reranked evaluation artefacts:
+
+```bash
+ls -lh \
+  data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv \
+  data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv \
+  data/evaluation_reports/reranked/judge_agreement_summary.csv
+```
+
+The repository includes completed artefacts for inspection. Re-run the underlying workflow only if you intentionally need regenerated results.
+
+---
 
 ### Dashboard shows no feedback
 
-The message:
+The empty-state message means that `data/feedback/feedback.csv` is absent, empty, or contains no usable feedback values.
 
-```text
-No feedback collected yet. Use the main app to submit feedback!
-```
-
-means `data/feedback/feedback.csv` does not yet exist, is empty, or has no usable `feedback` values.
-
-Feedback persistence is implemented. To create feedback data:
+To create feedback:
 
 1. Open the Query tab.
 2. Run an analysis.
 3. Select **Helpful** or **Not helpful**.
-4. Confirm that the app reports the saved feedback path.
+4. Confirm the app reports that feedback was saved.
 
-Then verify:
+Then inspect the output:
 
 ```bash
 ls -lh data/feedback/feedback.csv
 head -n 5 data/feedback/feedback.csv
 ```
 
-### External benchmark results are being used too early
+---
 
-If work starts to repeatedly tune on `expert_test.tsv`:
+### External benchmark test data is being used too early
 
-- Stop using the test split for iterative experiments.
-- Return to `expert_dev.tsv` for retrieval, prompt, model, and rubric changes.
-- Freeze curation and evaluation rules before running a final held-out test evaluation.
+If iterative work begins tuning retrieval, prompts, models, or rubrics against `expert_test.tsv`:
+
+- Stop using the test split for tuning.
+- Return to `expert_dev.tsv` for development.
+- Freeze curation and evaluation rules.
+- Use the held-out test split only for final external evaluation.
 
 ---
 
 ## Current limits
 
-This runbook currently covers:
+This runbook covers:
 
 - ATT&CK acquisition and extraction
+- PostgreSQL with pgvector
 - Database initialisation, loading, and embeddings
-- Local PostgreSQL with pgvector
-- Text, vector, hybrid, and vector-plus-reranking retrieval benchmarks
-- Query-rewriting retrieval benchmark with optional rate limiting
-- Local cross-encoder reranker validation
+- Docker Compose application startup and automated ingestion
+- Text, vector, hybrid, reranked, and query-rewrite retrieval experiments
+- Local CPU cross-encoder reranking
 - Reranked answer-generation comparison
-- Reciprocal pairwise LLM-as-judge evaluation and agreement analysis
-- Blinded manual review of judge-disagreement cases
-- Persisted query-feedback capture
-- Streamlit UI and monitoring dashboard execution
-- Streamlit application Dockerfile build process
-- External Expert dataset inspection
-- Expert-label compatibility validation
+- Reciprocal pairwise LLM-as-judge evaluation
+- Blinded manual review of judge disagreements
+- Persisted local feedback capture
+- Streamlit Query, Dashboard, and Evaluation Review workflows
+- External Expert-dataset inspection and label compatibility validation
 
 This runbook does not yet cover:
 
-- Final rubric-scored answer evaluation across a frozen benchmark
-- Dynamic dashboard loading for the retrieval-comparison benchmark values
-- Production deployment configuration, secret management, and observability
-- Final held-out end-to-end external benchmark evaluation
+- A frozen held-out end-to-end external benchmark
+- Dynamic loading of dashboard retrieval-comparison metrics from versioned benchmark reports
+- Concurrent or production-grade feedback storage
+- Production secret management, observability, service networking, scaling, or deployment
+- A final Docker Compose production deployment configuration beyond the validated local demonstration stack

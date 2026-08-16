@@ -19,7 +19,7 @@ services:
         ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
       start_period: 10s
 
   streamlit:
@@ -29,17 +29,46 @@ services:
     container_name: cyber-threat-identifier-streamlit
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-cyber_threat_identifier}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_BASE_URL=${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
-      - MODEL_ID=${MODEL_ID:-gemini-3.5-flash-lite}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-cyber_threat_identifier}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://generativelanguage.googleapis.com/v1beta/openai/}
+      MODEL_ID: ${MODEL_ID:-gemini-3.1-flash-lite}
+      HF_HOME: /app/.cache/huggingface
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: none
     ports:
       - "${STREAMLIT_PORT:-8501}:8501"
     volumes:
       - ./data:/app/data
+      - hf_cache:/app/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
 
+  ingest:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    profiles: ["ingest"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-cyber_threat_identifier}
+      HF_HOME: /app/.cache/huggingface
+      INGEST_REF: ${INGEST_REF:-master}
+    volumes:
+      - ./data:/app/data
+      - hf_cache:/app/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        uv run python -m src.ingestion.download_attack_data --ref "$${INGEST_REF}"
+        uv run python -m src.ingestion.extract_attack_techniques
+        uv run python -m src.database.db_init
+        uv run python -m src.database.db_load_techniques
+        uv run python -m src.database.db_build_embeddings
+
 volumes:
   postgres_data:
+  hf_cache:
