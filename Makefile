@@ -1,42 +1,29 @@
-.PHONY: help install app dashboard docker-up docker-down eval-llm eval-llm-reranked
-
+.PHONY: help up down logs ingest reset app dashboard
 
 help:
 	@echo "Cyber Threat Identifier — Available Commands"
 	@echo ""
-	@echo "  make install              Install all dependencies (including Streamlit)"
-	@echo "  make app                  Run Streamlit app (home page with tabs)"
-	@echo "  make dashboard            Run Streamlit dashboard page"
-	@echo "  make docker-up            Start PostgreSQL + Streamlit with Docker"
-	@echo "  make docker-down          Stop Docker containers"
-	@echo "  make eval-llm             Run LLM comparison (vector-only, baseline)"
-	@echo "  make eval-llm-reranked    Run LLM comparison (vector + reranking, v1)"
-	@echo ""
+	@echo "  make up          Start PostgreSQL and Streamlit"
+	@echo "  make ingest      Rebuild ATT&CK corpus, database, and embeddings in Compose"
+	@echo "  make down        Stop containers"
+	@echo "  make logs        Follow Streamlit logs"
+	@echo "  make reset       Delete database volume, then rebuild the full local stack"
+	@echo "  make app         Run Streamlit on host (development)"
+	@echo "  make dashboard   Run dashboard on host (development)"
 
+up:
+	docker compose up -d --build
 
-install:
-	uv pip install streamlit plotly matplotlib
-
-
-app:
-	PYTHONPATH=. uv run streamlit run app/home.py --server.fileWatcherType=none
-
-
-dashboard:
-	PYTHONPATH=. uv run streamlit run app/dashboard.py --server.fileWatcherType=none
-
-
-docker-up:
-	docker compose up --build
-
-
-docker-down:
+down:
 	docker compose down
 
+logs:
+	docker compose logs -f streamlit
 
-eval-llm:
-	uv run python -m src.evaluation.run_expert_llm_comparison --limit 226
+ingest:
+	docker compose --profile ingest run --rm ingest
 
-
-eval-llm-reranked:
-	PYTHONPATH=. uv run python -m src.evaluation.run_expert_llm_comparison_reranked
+reset:
+	docker compose down -v
+	docker compose up -d --build
+	docker compose --profile ingest run --rm ingest

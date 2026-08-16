@@ -1095,6 +1095,99 @@ Run a final repository-wide consistency check for stale model names, old evaluat
 
 ---
 
+
+## 2026-08-16 — Docker Compose validation and submission-readiness hardening
+
+### Stage
+
+Containerization, ingestion automation, reproducibility, dashboard polish, and final documentation alignment.
+
+### Goal
+
+Validate that the complete v1 application stack can be rebuilt from an empty local Docker state, with PostgreSQL, pgvector, Streamlit, source ingestion, database loading, and embedding generation all executed through Docker Compose.
+
+### What was done
+
+- Revised the Streamlit Docker image to use the locked `uv` environment rather than a manually maintained dependency list.
+- Pinned the Docker image's `uv` tool version and configured the image to run Streamlit through:
+
+  ```text
+  uv run streamlit run app/home.py --server.fileWatcherType=none
+  ```
+
+- Updated Docker Compose to define:
+  - `postgres` for PostgreSQL with pgvector.
+  - `streamlit` for the four-tab analyst-facing application.
+  - `ingest` as an on-demand Compose profile for the complete ingestion pipeline.
+- Configured the `ingest` service to run all pipeline stages through the locked `uv` environment:
+
+  ```text
+  uv run python -m src.ingestion.download_attack_data
+  uv run python -m src.ingestion.extract_attack_techniques
+  uv run python -m src.database.db_init
+  uv run python -m src.database.db_load_techniques
+  uv run python -m src.database.db_build_embeddings
+  ```
+
+- Configured the ingestion shell to fail immediately if any pipeline stage fails.
+- Added a persistent Hugging Face cache volume so downloaded embedding and reranker models can be reused across container runs.
+- Performed a destructive clean-state validation:
+
+  ```bash
+  docker compose down -v
+  make up
+  make ingest
+  ```
+
+- Confirmed that the Compose ingestion pipeline:
+  - Downloaded the ATT&CK STIX collection index and Enterprise bundle.
+  - Extracted 697 active Enterprise ATT&CK techniques and sub-techniques.
+  - Created the `techniques` and `ingestion_runs` database tables.
+  - Loaded and upserted 697 technique records.
+  - Generated normalised `sentence-transformers/all-MiniLM-L6-v2` embeddings for all 697 records.
+- Confirmed that Streamlit starts successfully through Docker Compose at:
+
+  ```text
+  http://localhost:8501
+  ```
+
+- Renumbered the dashboard charts consistently:
+
+  1. Answer Generation Latency Distribution
+  2. Judge Preferences: Gemini 3.5 Flash-Lite as Judge
+  3. Judge Preferences: Gemini 3.1 Flash-Lite as Judge
+  4. Retrieval Method Comparison (MRR & Hit@3)
+  5. Judge Agreement Rate
+  6. User Feedback Distribution
+
+- Updated the repository artefact policy so completed evaluation inputs and reports can be committed for marker inspection, while raw ATT&CK downloads, the local upstream inspection clone, secrets, caches, Docker volumes, and runtime feedback remain local.
+
+### What was learned
+
+- A Streamlit container can appear healthy at the HTTP level while a lazily imported Query workflow still lacks a required database dependency. An explicit container-side database import and query check is necessary for meaningful end-to-end validation.
+- `uv sync` installs project dependencies into the project virtual environment; Compose utility services must use `uv run python`, not plain system `python`.
+- The initial model download is expected during a clean Compose ingestion run. The persistent Hugging Face cache volume prevents repeated model downloads on later runs.
+- The complete ingestion pipeline is now executable through Docker Compose without requiring host Python, host `uv`, or a manually started local PostgreSQL instance.
+- The committed evaluation artefacts allow reviewers to inspect benchmark evidence and render dashboard charts without requiring Gemini API credentials, available quota, or lengthy evaluation reruns.
+- Runtime feedback should remain separate from fixed offline evaluation evidence because feedback records can contain user-entered narratives and generated answers.
+
+### Decision made
+
+- Treat Docker Compose as the canonical local execution path for the v1 application stack:
+  - `make up` starts PostgreSQL and Streamlit.
+  - `make ingest` performs the complete automated ATT&CK ingestion, database load, and embedding-build workflow.
+  - `make down` stops the local stack.
+- Retain the `ingest` service as an explicit one-off Compose profile rather than adding a workflow orchestrator. The existing modular Python pipeline, validation, audit records, and Compose execution path are sufficient for the assessed ingestion requirement.
+- Retain the six-chart dashboard structure and consistent sequential chart numbering.
+- Keep raw source downloads and runtime feedback local, while making completed evaluation evidence inspectable in the repository with documented upstream attribution and source revision.
+
+### Problems or uncertainties
+
+- The current Compose ingestion default uses the moving ATT&CK `master` reference for convenience. A future formal comparable benchmark should use a fixed ATT&CK release tag or commit.
+- The initial clean ingestion run requires internet access to download ATT&CK data and the Sentence Transformers embedding
+
+---
+
 ## Template for future entries
 
 ## YYYY-MM-DD — Short stage title

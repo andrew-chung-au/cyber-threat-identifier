@@ -13,9 +13,9 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 | DEC-001 | Project scope                                    | Accepted          | 2026-07-27 |
 | DEC-002 | Core corpus selection                            | Accepted          | 2026-07-27 |
 | DEC-003 | Product naming and ATT&CK references             | Accepted          | 2026-07-27 |
-| DEC-004 | Public repository and attribution                | Accepted          | 2026-07-30 |
+| DEC-004 | Public repository and attribution                | Accepted; updated | 2026-08-16 |
 | DEC-005 | Repository structure                             | Accepted          | 2026-07-29 |
-| DEC-006 | Execution convention                             | Accepted          | 2026-07-29 |
+| DEC-006 | Execution convention                             | Accepted; updated | 2026-08-16 |
 | DEC-007 | Source provenance and versioning                 | Accepted          | 2026-07-29 |
 | DEC-008 | Retrieval unit and chunking                      | Accepted          | 2026-07-29 |
 | DEC-009 | Processed corpus schema and snapshot policy      | Accepted          | 2026-07-30 |
@@ -23,14 +23,16 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 | DEC-011 | Embedding baseline                               | Accepted baseline | 2026-07-30 |
 | DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
 | DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
-| DEC-014 | External evaluation benchmark strategy           | Accepted          | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy           | Accepted; updated | 2026-08-16 |
 | DEC-015 | Default retrieval method for v1                  | Superseded        | 2026-07-31 |
 | DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
-| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline | 2026-07-31 |
-| DEC-018 | Default retrieval configuration with reranking   | Accepted          | 2026-08-12 |
-| DEC-019 | User query rewriting evaluation and decision | Accepted | 2026-08-13 |
+| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline; updated | 2026-08-16 |
+| DEC-018 | Default retrieval configuration with reranking   | Accepted; updated | 2026-08-16 |
+| DEC-019 | User query rewriting evaluation and decision     | Accepted          | 2026-08-13 |
 | DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted | 2026-08-16 |
-| DEC-021 | Default answer-generation model selection | Accepted | 2026-08-16 |
+| DEC-021 | Default answer-generation model selection        | Accepted          | 2026-08-16 |
+| DEC-022 | Docker Compose execution and automated ingestion | Accepted          | 2026-08-16 |
+| DEC-023 | Reviewable evaluation artefacts                  | Accepted          | 2026-08-16 |
 
 ---
 
@@ -123,14 +125,14 @@ Use **MITRE ATT&CK®** in the first substantive documentation reference and **AT
 ### Consequences
 
 - The title is direct, professional, and avoids using ATT&CK as a product identity.
-- The README must clearly explain the project’s corpus and its relationship to MITRE ATT&CK.
+- The README must clearly explain the project's corpus and its relationship to MITRE ATT&CK.
 - Attribution and terminology must be applied consistently throughout the repository.
 
 ---
 
 ## DEC-004 — Public repository and attribution
 
-**Status:** Accepted  
+**Status:** Accepted; updated 2026-08-16  
 **Date:** 2026-07-30
 
 ### Context
@@ -153,16 +155,24 @@ The repository will include:
 - A reproducible runbook.
 - The processed ATT&CK corpus snapshot, `data/processed/techniques.jsonl`.
 - The ATT&CK download provenance record, `data/source_manifest.csv`.
-- Lightweight evaluation reports that do not reproduce upstream narrative text, including label-compatibility reports.
-- Evaluation code, frozen benchmark-selection rules, upstream source references, and upstream row identifiers.
+- Completed evaluation inputs and reports so markers can inspect reported evidence without API credentials, quota, or lengthy reruns.
 
 The repository will not commit:
 
 - Raw upstream ATT&CK STIX downloads.
-- External datasets downloaded for feasibility inspection.
-- Full copied third-party threat-report passages from an external benchmark unless their redistribution and attribution position is explicitly resolved.
+- The local external-source inspection clone.
+- Secrets, local environments, caches, Docker volumes, or runtime feedback.
 
-Raw ATT&CK files are regenerated through the documented download stage and verified using recorded source references and checksums. External feasibility downloads remain under `data/external_inspection/` and are ignored by Git.
+The committed evaluation artefacts are derived from the Security-TTP-Mapping Expert configuration. The repository records the upstream repository, configuration, revision, licence declaration, and project filtering/evaluation treatment. The exact upstream revision used for the current artefacts is:
+
+```text
+Repository: https://github.com/tumeteor/mitre-ttp-mapping
+Configuration: Expert
+Revision: a16856a6438ca2b7888c5cadfba6d7c854f04a55
+Licence declared by upstream: CC BY 4.0
+```
+
+This project is independent of the upstream authors and does not imply their endorsement.
 
 ### Alternatives considered
 
@@ -170,18 +180,17 @@ Raw ATT&CK files are regenerated through the documented download stage and verif
 - Manual local setup with undocumented steps.
 - Commit all raw and processed source artefacts.
 - Ignore all generated data, including the processed corpus.
-- Commit an external benchmark before resolving its provenance and redistribution position.
-- Mixed-source corpus with uncertain reuse or attribution requirements.
+- Keep every evaluation report local, requiring markers to rerun API-bound work.
+- Commit an external benchmark before recording its provenance and attribution.
 - Commit environment-specific configuration for convenience.
 
 ### Consequences
 
-- The project is safer to share publicly and easier for reviewers to reproduce.
-- Reviewers can inspect the derived ATT&CK retrieval corpus without first downloading the upstream STIX bundle.
-- The processed corpus and manifest must be reviewed before intentional updates are committed.
-- Raw source artefacts remain reproducible without unnecessarily duplicating upstream files.
-- External evaluation can be documented and reproduced from source revision and row IDs without prematurely republishing threat-report text.
-- Reproducibility, attribution, and provenance add maintenance and documentation work.
+- Reviewers can inspect the derived ATT&CK corpus and completed evaluation evidence without running the full system.
+- Raw source artefacts remain reproducible without unnecessarily duplicating upstream downloads.
+- Runtime feedback remains separate from fixed offline evidence because it may contain user-entered narratives and generated answers.
+- Evaluation reports must retain the documented upstream attribution and must not be described as final held-out performance when they combine development- and test-derived cases.
+- The project accepts the maintenance responsibility of keeping committed report outputs aligned with documented decisions.
 
 ---
 
@@ -212,9 +221,7 @@ src/
 └── monitoring/
 ```
 
-Use `__init__.py` files in package directories.
-
-Place external benchmark inspection, curation, compatibility validation, retrieval evaluation, and answer evaluation modules in `src/evaluation/`.
+Use `__init__.py` files in package directories. Place external benchmark inspection, curation, compatibility validation, retrieval evaluation, and answer evaluation modules in `src/evaluation/`.
 
 ### Alternatives considered
 
@@ -235,12 +242,12 @@ Place external benchmark inspection, curation, compatibility validation, retriev
 
 ## DEC-006 — Execution convention
 
-**Status:** Accepted  
+**Status:** Accepted; updated 2026-08-16  
 **Date:** 2026-07-29
 
 ### Context
 
-The grouped `src/` layout needs a consistent way to run modules and resolve imports reliably.
+The grouped `src/` layout needs a consistent way to run modules and resolve imports reliably. The Docker image also needs to use the same locked environment as local development.
 
 ### Decision
 
@@ -258,17 +265,27 @@ Direct file execution is acceptable for self-contained operational scripts that 
 uv run python src/evaluation/validate_external_expert_labels.py
 ```
 
+The Docker Compose ingestion service uses the same convention inside the container:
+
+```bash
+uv run python -m src.database.db_init
+```
+
+Do not use plain system `python` for Compose ingestion stages because the project dependencies are installed in the `uv` environment.
+
 ### Alternatives considered
 
 - Run every file directly using paths such as `python src/database/db_init.py`.
+- Invoke plain system Python from the Compose ingestion service.
 - Add `src/` manually to `PYTHONPATH`.
 - Install the project as a package before every execution.
 
 ### Consequences
 
 - Imports remain predictable across functional subdirectories.
-- The runbook can use a consistent `uv run python` command style.
+- Local and containerised pipeline execution use the same dependency environment.
 - Commands must be run from the repository root.
+- Compose ingestion fails early when a stage fails rather than presenting partial output as a successful build.
 - Self-contained validation scripts can remain simple while package-dependent pipeline stages use module execution.
 
 ---
@@ -280,7 +297,7 @@ uv run python src/evaluation/validate_external_expert_labels.py
 
 ### Context
 
-The ATT&CK repository’s default reference can change over time, while evaluation and portfolio evidence require a reproducible source baseline.
+The ATT&CK repository's default reference can change over time, while evaluation and portfolio evidence require a reproducible source baseline.
 
 ### Decision
 
@@ -555,7 +572,7 @@ Keep detailed rationale in the relevant evidence or decision document rather tha
 
 ## DEC-014 — External evaluation benchmark strategy
 
-**Status:** Accepted  
+**Status:** Accepted; updated 2026-08-16  
 **Date:** 2026-07-30
 
 ### Context
@@ -576,6 +593,15 @@ Compatibility validation against the current local active Enterprise ATT&CK corp
 - 4 held-out test rows containing one or more non-active labels.
 - 153 of 157 held-out test rows containing only active labels before later curation.
 
+The exact upstream revision used for the current committed evaluation artefacts is:
+
+```text
+Repository: https://github.com/tumeteor/mitre-ttp-mapping
+Configuration: Expert
+Revision: a16856a6438ca2b7888c5cadfba6d7c854f04a55
+Licence declared by upstream: CC BY 4.0
+```
+
 ### Decision
 
 Adopt the Security-TTP-Mapping **Expert** configuration as the leading candidate external benchmark for future end-to-end retrieval and answer evaluation.
@@ -593,6 +619,8 @@ Do not automatically remap deprecated or revoked upstream labels to newer ATT&CK
 Do not edit the upstream TSV files. Preserve the original source revision, upstream split, row index, and complete original label list for every future retained benchmark case.
 
 Keep the external repository in `data/external_inspection/` and ignored by Git during feasibility and development. Do not commit copied threat-report narrative text to the public repository until redistribution, attribution, and provenance treatment is explicitly resolved.
+
+The committed evaluation inputs and reports are review artefacts derived from this source. They are not the retrieval corpus and are not presented as a frozen held-out final benchmark.
 
 ### Alternatives considered
 
@@ -613,6 +641,7 @@ Keep the external repository in `data/external_inspection/` and ignored by Git d
 - The project must not invent a primary label for an upstream multi-label narrative without separate human review and explicit metadata.
 - External benchmark provenance and redistribution constraints may require storing only selection metadata, source references, row indices, and aggregate evaluation results in the public repository.
 - Final benchmark rules must be frozen on `expert_dev.tsv` before they are applied to the held-out test split.
+- Reviewers can inspect completed evaluation reports without rerunning API-bound jobs.
 
 ---
 
@@ -697,9 +726,8 @@ Refactor retrieval and evaluation code into clearer modules with shared helpers:
 
 ## DEC-017 — Answer-generation pipeline and output contract
 
-**Status:** Accepted baseline  
-**Date:** 2026-07-31  
-**Updated:** 2026-08-16
+**Status:** Accepted baseline; updated 2026-08-16  
+**Date:** 2026-07-31
 
 ### Context
 
@@ -808,10 +836,9 @@ Treat the output contract as a stable high-level baseline. Prompt wording, model
 
 ## DEC-018 — Default retrieval configuration with reranking
 
-**Status:** Accepted  
+**Status:** Accepted; updated 2026-08-16  
 **Date:** 2026-08-12  
-**Supersedes:** DEC-015 for the default v1 retrieval configuration  
-**Updated:** 2026-08-16
+**Supersedes:** DEC-015 for the default v1 retrieval configuration
 
 ### Context
 
@@ -832,7 +859,7 @@ The vector-only and vector-plus-reranking configurations were evaluated against 
 ### Results
 
 | Metric | Vector | Vector + cross-encoder reranking | Absolute change |
-|---|---:|---:|---:|
+|--------|--------|----------------------------------|-----------------|
 | Recall@1 | 0.1098 | 0.1462 | +0.0364 |
 | Recall@3 | 0.1940 | 0.2526 | +0.0586 |
 | Recall@5 | 0.2710 | 0.3104 | +0.0394 |
@@ -935,7 +962,7 @@ The `rewritten_vector_reranked` configuration was evaluated against the same 226
 Results were:
 
 | Metric | Vector + rerank (DEC-018) | Query rewrite + vector + rerank | Absolute change |
-|---|---:|---:|---:|
+|--------|---------------------------|---------------------------------|-----------------|
 | Recall@1 | 0.1462 | 0.1495 | +0.0033 |
 | Recall@3 | 0.2526 | 0.2966 | +0.0440 |
 | Recall@5 | 0.3104 | 0.3507 | +0.0403 |
@@ -1091,7 +1118,7 @@ data/evaluation_reports/reranked/judge_disagreements.csv
 The reciprocal pairwise evaluation completed for all 226 cases.
 
 | Measure | Result |
-|---|---:|
+|---------|--------|
 | Cases evaluated | 226 |
 | Cross-judge agreement | 171 / 226 |
 | Cross-judge agreement rate | 75.66% |
@@ -1157,7 +1184,7 @@ DEC-021 records the final human-adjudicated model-selection decision.
 
 ---
 
-## DEC-021 — Select default answer-generation model after manual review
+## DEC-021 — Default answer-generation model selection
 
 **Status:** Accepted  
 **Date:** 2026-08-16  
@@ -1188,7 +1215,7 @@ The review assessed:
 ### Manual-review results
 
 | Measure | Result |
-|---|---:|
+|---------|--------|
 | Cases reviewed | 55 |
 | Gemini 3.1 wins | 21 (38.2% of all cases) |
 | Gemini 3.5 wins | 16 (29.1% of all cases) |
@@ -1243,3 +1270,122 @@ This result is supporting diagnostic evidence only. It was not combined with the
 - Add manually identified shared failures, empty-context cases, and misleading-label cases to a future regression or gold-standard dataset.
 - Re-run answer-generation and manual-review evaluation before changing the default retrieval configuration, generation prompt, answer schema, or default answer model.
 - Treat feedback persisted by the Streamlit application as a future evaluation signal, not as a replacement for controlled benchmark or human-review evidence.
+
+---
+
+## DEC-022 — Docker Compose execution and automated ingestion
+
+**Status:** Accepted  
+**Date:** 2026-08-16
+
+### Context
+
+The rubric requires a reproducible containerised application and an automated ingestion workflow. The project already had separate Python modules for downloading, extracting, database initialisation, loading, and embedding generation.
+
+A first Compose attempt exposed two implementation issues: the image needed to use the locked `uv` environment, and the ingestion service needed to invoke `uv run python` rather than plain system Python.
+
+### Decision
+
+Use Docker Compose as the canonical local execution path for the v1 stack:
+
+- `postgres` runs PostgreSQL with pgvector.
+- `streamlit` runs the analyst-facing application.
+- `ingest` is an on-demand Compose profile that executes the complete pipeline.
+
+The ingestion profile runs:
+
+```text
+Download ATT&CK source
+  → Extract active techniques
+  → Initialise PostgreSQL schema
+  → Load and upsert processed records
+  → Generate embeddings
+```
+
+The ingestion service uses the locked project environment through `uv run python`, fails fast on errors, mounts project data for generated corpus/provenance files, and persists the Hugging Face model cache in a named volume.
+
+Canonical commands are:
+
+```bash
+make up
+make ingest
+make down
+```
+
+### Validation
+
+A destructive clean-state validation completed successfully:
+
+```bash
+docker compose down -v
+make up
+make ingest
+```
+
+The run produced 697 active technique/sub-technique records. Database verification returned:
+
+```text
+total_techniques | embedded_techniques | missing_embeddings
+-----------------+---------------------+------------------
+697              | 697                 | 0
+```
+
+The application container also queried PostgreSQL successfully and returned:
+
+```text
+Technique count: 697
+```
+
+### Alternatives considered
+
+- Run PostgreSQL in Compose but execute ingestion only on the host.
+- Add Prefect or another workflow orchestrator solely for rubric presentation.
+- Combine all ingestion logic into one monolithic script.
+- Use plain system Python in the ingestion container.
+
+### Consequences
+
+- A marker can run the application and complete ingestion through Docker Compose without host Python dependencies.
+- The existing modular Python scripts are sufficient as the automated ingestion implementation; no additional orchestrator is required for v1.
+- The first clean run requires network access for ATT&CK and Hugging Face downloads and may take several minutes.
+- The named model-cache volume reduces repeat-run time.
+- The current Compose path is validated locally but remains intended for reproducible local demonstration rather than production deployment.
+
+---
+
+## DEC-023 — Reviewable evaluation artefacts
+
+**Status:** Accepted  
+**Date:** 2026-08-16
+
+### Context
+
+Evaluation runs include API-bound answer generation and LLM-as-judge calls that may require credentials, quota, and substantial time. A marker should be able to inspect the evidence supporting the reported results without rerunning those jobs.
+
+### Decision
+
+Commit the current evaluation inputs and completed evaluation reports required to inspect the v1 evidence and render the dashboard. Keep raw source downloads, the external inspection clone, secrets, caches, Docker volumes, and runtime feedback ignored.
+
+The committed reports must be accompanied by:
+
+- upstream repository and configuration;
+- exact source revision;
+- licence declaration and attribution;
+- clear statement that the 226-case set combines development- and test-derived records;
+- clear statement that the results are implementation-comparison evidence, not final held-out performance.
+
+The current external evaluation source is:
+
+```text
+Repository: https://github.com/tumeteor/mitre-ttp-mapping
+Configuration: Expert
+Revision: a16856a6438ca2b7888c5cadfba6d7c854f04a55
+Licence declared by upstream: CC BY 4.0
+```
+
+### Consequences
+
+- Markers can inspect retrieval, answer-generation, judge, agreement, and manual-review evidence without API credentials or quota.
+- The dashboard can render completed offline evaluation charts immediately after the repository is cloned.
+- Runtime feedback remains an honest empty state until a real user submits feedback.
+- Any future change to the source revision, corpus, evaluation set, or reported metrics must update the relevant evidence and documentation together.
