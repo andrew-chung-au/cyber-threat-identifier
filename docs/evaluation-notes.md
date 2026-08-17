@@ -38,11 +38,7 @@ Determine whether the system retrieves expected active Enterprise ATT&CK techniq
 
 The current implemented retrieval benchmark uses Expert-derived incident narratives and active Enterprise ATT&CK technique and sub-technique records.
 
-The benchmark input file is:
-
-```text
-data/eval/expert_retrieval_cases.csv
-```
+The derived 226-case benchmark input is not committed. Upstream source details, split policy, and provenance requirements are documented in [`docs/dataset-notes.md`](docs/dataset-notes.md). Reviewers can obtain the upstream Expert dataset from the documented Security-TTP-Mapping source and exact revision, then follow the evaluation workflow to recreate or extend the benchmark.
 
 The current benchmark contains 226 cases assembled from the upstream Expert development and test splits. It is an **implementation-comparison set**, not a frozen held-out benchmark. It mixes development- and test-derived cases and is used to compare retrieval configurations under the same corpus and case set.
 
@@ -78,20 +74,16 @@ The implemented retrieval methods are:
 ```bash
 uv run python -m src.evaluation.run_expert_text_retrieval_benchmark
 
-
 uv run python -m src.evaluation.run_expert_vector_retrieval_benchmark \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_retrieval_results.csv
 
-
 uv run python -m src.evaluation.run_expert_hybrid_retrieval_benchmark
-
 
 uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
   --candidate-k 20 \
   --top-k 10 \
   --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
-
 
 uv run python -m src.evaluation.run_expert_query_rewrite_retrieval_benchmark \
   --candidate-k 20 \
@@ -411,7 +403,6 @@ uv run python -m src.evaluation.run_llm_judge_pairwise \
   --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
   --judge-model gemini-3.1-flash-lite \
   --output data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv
-
 
 uv run python -m src.evaluation.run_llm_judge_pairwise \
   --input data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
@@ -835,3 +826,5 @@ State whether this is an experiment-specific observation or a stable decision re
 - Record corpus version, source revision, embedding model, reranker model, prompt version, candidate pool, top-k, and generation settings for reported experiments.
 - Do not report repeatedly tuned development results as general system performance.
 - Treat the current 226-case set as an implementation-comparison set, not as a frozen held-out benchmark.
+- The public Query interface uses `data/sample_queries.json` for demonstration narratives; it does not load narratives from restricted expert evaluation files.
+- The EC2 deployment requires an explicit ingestion step (`docker compose --profile ingest up --build`) before the application database is ready for query use.

@@ -1,41 +1,113 @@
 # Cyber Threat Identifier
 
-Cyber Threat Identifier is an evidence-oriented retrieval system that maps unstructured cyber incident narratives to likely Enterprise MITRE ATT&CK® techniques and sub-techniques.
+Cyber Threat Identifier is an independent, evidence-oriented retrieval system that maps unstructured cyber incident narratives to likely Enterprise MITRE ATT&CK® techniques and sub-techniques. *(See [MITRE ATT&CK attribution](#mitre-attck-attribution) below).*
 
 It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and relevant metadata. It supports analyst judgement; it does not determine attribution, severity, incident-response actions, or complete behavioural coverage.
 
-> **Project status (v1):**
-> - The ATT&CK ingestion, PostgreSQL + pgvector database, text, vector, hybrid, and local document-reranking retrieval paths are implemented.
-> - Vector retrieval plus local cross-encoder reranking is the selected v1 retrieval configuration based on the current 226-case Expert-derived benchmark.
-> - Query rewriting with LLM (Gemini 3.1 Flash Lite) was evaluated and improved retrieval metrics but introduced unacceptable latency for interactive use; it is retained as an evaluated best-practice component.
-> - The answer-generation pipeline uses vector retrieval plus local cross-encoder reranking and produces structured, retrieval-grounded outputs.
-> - Pairwise LLM-as-judge evaluation (3.1 vs 3.5) and cross-judge agreement analysis over 226 expert-derived cases are implemented (DEC-020). All 55 judge-disagreement cases were manually reviewed blind to model identity.
-> - Gemini 3.1 Flash-Lite is selected as the default v1 answer-generation model based on manual-review results (DEC-021).
-> - An analyst-facing Streamlit UI and monitoring dashboard are implemented with four tabs: Home, Query, Dashboard, and Evaluation Review.
-> - Feedback persistence is implemented; an empty feedback chart means no feedback has yet been submitted.
-> - A frozen held-out external benchmark remains in progress.
-> - Docker Compose is the canonical local execution path for the application and automated ingestion.
-> - Completed evaluation artefacts are committed for inspection so markers can review evidence and dashboard charts without rerunning API-bound jobs.
+> **Project status (v1)**
+>
+> - The deployed retrieval path uses pgvector candidate retrieval plus local cross-encoder reranking.
+> - The selected answer-generation model is `gemini-3.1-flash-lite`.
+> - The application includes a Streamlit Query interface, monitoring dashboard, feedback capture, and blinded evaluation-review workflow.
+> - Retrieval and answer-generation configurations were evaluated on a 226-case Expert-derived implementation-comparison set.
+> - The current benchmark is not a frozen held-out final benchmark.
+> - Docker Compose is the canonical local runtime and ingestion path.
+> - The public demonstration uses synthetic or source-informed sample narratives in `data/sample_queries.json`; it does not expose restricted expert-evaluation narratives.
+
+---
+
+## Reviewer Navigation
+
+*   **[Self-Assessment & Rubric Mapping](docs/self-assessment.md):** Start here for a direct map of project features to course evaluation criteria.
+*   **[Live Demo](http://44.222.157.15:8501/):** Open the AWS EC2 deployment for a 5-minute review.
+*   **[Runbook](docs/runbook.md):** Complete steps for local reproduction and evaluation benchmark execution.
+
+---
+
+## Project Highlights
+
+For reviewers short on time, here is a high-level summary of the system's architecture and capabilities:
+
+*   **Automated Data Pipeline:** A fully containerized ingestion script downloads official MITRE ATT&CK STIX 2.1 data, extracts active techniques, and loads them into a PostgreSQL database with pgvector.
+*   **Advanced Retrieval:** The system moves beyond basic vector search by implementing a two-stage retrieval pipeline: initial semantic search via `all-MiniLM-L6-v2`, followed by local cross-encoder document reranking (`ms-marco-MiniLM-L-6-v2`) to dramatically improve candidate ordering.
+*   **Grounded Answer Generation:** Using `gemini-3.1-flash-lite`, the system generates structured, analyst-friendly assessments that are strictly grounded in the retrieved ATT&CK context, complete with uncertainty flags.
+*   **Rigorous Evaluation:** Models and retrieval methods were benchmarked against a 226-case expert-derived dataset. The final architecture was selected based on reciprocal pairwise LLM-as-judge evaluation and blinded human manual review.
+*   **Full Containerization:** The database, Streamlit UI, and ingestion pipelines are entirely reproducible via Docker Compose.
+
+---
+
+## Live demo
+
+**[Open Cyber Threat Identifier](http://44.222.157.15:8501/)**
+
+The application is deployed temporarily on AWS EC2 for reviewer access. It runs the same Docker Compose stack documented for local reproduction.
+
+The deployment is a demonstration environment, not a production service. It does not include HTTPS, a custom domain, managed secrets, backups, high availability, or production monitoring.
+
+---
+
+## Review in five minutes
+
+You do not need to clone the repository to review the main application workflow.
+
+1. Open the [live demo](http://44.222.157.15:8501/).
+2. Select **Query**.
+3. Choose a public sample query or paste a short incident narrative, for example:
+
+   ```text
+   Attackers used PowerShell scripts to download and execute malware on victim hosts.
+   ```
+
+4. Select **Analyze**.
+5. Confirm that the interface shows:
+   - A generated candidate assessment.
+   - Retrieved ATT&CK techniques.
+   - A retrieval-grounding note.
+   - An uncertainty note.
+   - Feedback controls.
+6. Open **Dashboard** to inspect answer latency, retrieval comparison, judge preferences, judge agreement, and feedback charts.
+7. Optionally open **Evaluation Review** to inspect the completed manual-review results.
+
+The Query workflow uses the selected v1 path:
+
+```text
+Incident narrative
+        ↓
+Vector retrieval of top 20 ATT&CK candidates
+        ↓
+Local cross-encoder reranking
+        ↓
+Top 5 ATT&CK records used as answer context
+        ↓
+Structured candidate assessment using gemini-3.1-flash-lite
+```
+
+---
+
+## Assessment evidence
+
+| Criterion | Evidence |
+|---|---|
+| Problem and scope | [Problem](#problem), [Scope](#scope), [`docs/dataset-notes.md`](docs/dataset-notes.md) |
+| Knowledge base plus LLM flow | [Data Flow](#data-flow), `src/retrieval/`, `src/generation/` |
+| Retrieval evaluation | [Retrieval Evaluation Summary](#retrieval-evaluation-summary), [`docs/evaluation-notes.md`](docs/evaluation-notes.md) |
+| LLM evaluation | [`docs/evaluation-notes.md`](docs/evaluation-notes.md), `data/evaluation_reports/reranked/` |
+| Interface | [Live demo](http://44.222.157.15:8501/), `app/` |
+| Automated ingestion | [`compose.yaml`](compose.yaml), `src/ingestion/`, `src/database/` |
+| Monitoring | `app/dashboard.py`, `src/monitoring/feedback_store.py` |
+| Containerization | [`app/Dockerfile`](app/Dockerfile), [`compose.yaml`](compose.yaml) |
+| Reproducibility | [Local Reproduction](#local-reproduction--developer-rebuild), [`docs/runbook.md`](docs/runbook.md), `uv.lock` |
+| Self-assessment | [`docs/self-assessment.md`](docs/self-assessment.md) |
 
 ---
 
 ## Problem
 
-Security analysts often work from unstructured material such as alert notes, ticket comments, investigation summaries, and incident write-ups.
+Security analysts are constantly inundated with unstructured material—alert notes, ticket comments, investigation summaries, and external threat reports. Extracting actionable intelligence from this text requires mapping observed adversary behaviours to standardized frameworks like MITRE ATT&CK.
 
-Mapping those narratives to adversary behaviours can be slow and inconsistent. Cyber Threat Identifier provides a transparent ATT&CK retrieval layer that returns ranked technique candidates and source-grounded evidence for analyst review.
+Doing this manually is a slow, cognitively demanding, and inconsistent process because official ATT&CK guidance is vast and not trivially searchable by raw narrative text alone.
 
-```text
-Incident narrative
-        ↓
-Ranked likely ATT&CK technique candidates
-        ↓
-ATT&CK descriptions and metadata
-        ↓
-Structured candidate assessment
-        ↓
-Analyst review
-```
+**Cyber Threat Identifier** solves this by providing a retrieval-augmented generation (RAG) assistant. Rather than relying on a general LLM's ungrounded advice, it semantically searches a curated ATT&CK corpus, retrieves the most relevant technique records, and generates a structured assessment. It explicitly surfaces its supporting evidence and uncertainty, keeping the human analyst in the loop while drastically reducing their manual search time.
 
 ---
 
@@ -45,160 +117,48 @@ Version 1 focuses on a narrow incident-to-technique task: given an incident narr
 
 ### Included
 
-- Official Enterprise MITRE ATT&CK STIX 2.1 data.
-- Active ATT&CK techniques and sub-techniques only.
-- Technique IDs, names, tactics, platforms, descriptions, URLs, and timestamps.
-- Reproducible ATT&CK download, extraction, PostgreSQL loading, and embedding stages.
-- Text, vector, hybrid, and vector-plus-reranking retrieval evaluation.
-- Query-rewriting retrieval evaluation with LLM (Gemini 3.1 Flash Lite).
-- A local CPU cross-encoder reranker over vector-retrieved ATT&CK candidates.
-- An external Expert-derived evaluation source for retrieval and future answer evaluation.
-- Structured answer generation grounded in retrieved ATT&CK records using vector-plus-reranking retrieval.
-- Pairwise LLM-as-judge evaluation and judge-agreement analysis over 226 Expert-derived answer-generation cases (3.1 vs 3.5).
-- Manual review of all 55 judge-disagreement cases blind to model identity.
-- Streamlit analyst-facing UI and monitoring dashboard with four tabs: Home, Query, Dashboard, and Evaluation Review.
-- Persisted feedback capture linked to query, answer, model, and retrieved techniques.
-- Docker Compose configuration for PostgreSQL, Streamlit, and automated ingestion.
+- Official Enterprise MITRE ATT&CK STIX 2.1 data
+- Active ATT&CK techniques and sub-techniques only
+- Technique IDs, names, tactics, platforms, descriptions, URLs, and timestamps
+- PostgreSQL with pgvector for structured technique records and embeddings
+- Vector retrieval plus local cross-encoder reranking
+- Structured answer generation grounded in retrieved ATT&CK records
+- Streamlit Query, Dashboard, and Evaluation Review interfaces
+- User feedback capture
+- Automated Docker Compose ingestion
+- Public sample queries from `data/sample_queries.json`
 
 ### Out of scope
 
-- Threat actor, group, or campaign attribution.
-- Incident severity assessment or triage decisions.
-- Incident-response recommendations or playbooks.
-- Attack-path planning or reconstruction.
-- Detection engineering automation.
-- Confirming that a technique definitively occurred in an incident.
-- ATT&CK groups, software, campaigns, mitigations, relationships, detection content, and data sources as primary retrieval units.
-- External incident reports or vendor intelligence as primary retrieval corpus records.
+- Threat actor, group, or campaign attribution
+- Incident severity assessment or triage decisions
+- Incident-response recommendations or playbooks
+- Attack-path planning or reconstruction
+- Detection engineering automation
+- Confirming that a technique definitively occurred in an incident
+- ATT&CK groups, software, campaigns, mitigations, relationships, detection content, and data sources as primary retrieval units
+- External incident reports or vendor intelligence as primary retrieval corpus records
+- Public exposure of restricted expert-evaluation narratives
 
 ---
 
-## Marker quickstart
+## Local Reproduction & Developer Rebuild
 
-### Prerequisites
-
-- Docker Desktop or compatible Docker Engine
-- Git
-- A Gemini API key only if you want to run generated answers in the Query tab
-
-### Run the complete local stack
-
-```bash
-git clone <repository-url>
-cd cyber-threat-identifier
-cp .env.example .env
-```
-
-Add `LLM_API_KEY` to `.env` to enable answer generation. Retrieval and dashboard inspection can still be explored without it.
-
-```bash
-make up
-make ingest
-```
-
-Open [http://localhost:8501](http://localhost:8501).
-
-### Verify the build
-
-```bash
-docker compose ps
-
-docker compose exec postgres psql \
-  -U postgres \
-  -d cyber_threat_identifier \
-  -c "SELECT COUNT(*) AS techniques, COUNT(embedding) AS embeddings FROM techniques;"
-```
-
-Expected result: PostgreSQL is healthy, Streamlit is running, and all loaded ATT&CK technique records have embeddings.
-
-### Stop the stack
-
-```bash
-make down
-```
+For full environment setup, database initialization, containerized execution, LLM configuration, and targeted rebuilds, please refer to the **[Runbook](docs/runbook.md)**.
 
 ---
 
-## Data and retrieval flow
+## Data Flow
 
-The project uses active Enterprise ATT&CK `attack-pattern` objects from the official ATT&CK STIX source.
-
-```text
-Official Enterprise ATT&CK STIX source
-        ↓
-Extract active techniques and sub-techniques
-        ↓
-Processed JSONL corpus
-        ↓
-PostgreSQL + pgvector
-        ↓
-all-MiniLM-L6-v2 vector retrieval
-        ↓
-Top 20 ATT&CK candidates
-        ↓
-Local cross-encoder reranking
-        ↓
-Ranked candidate techniques
-        ↓
-Structured answer generation (gemini-3.1-flash-lite default)
-        ↓
-Analyst-facing retrieval and answer-generation integration
-```
-
-The retrieval unit is intentionally simple:
-
-```text
-one ATT&CK technique or sub-technique
-= one processed JSONL record
-= one PostgreSQL row
-= one structured embedding_text field
-= one embedding vector
-= one retrieval result
-```
-
-Version 1 does not chunk ATT&CK technique records. Each record remains a complete source-native unit with technique identity, tactics, platforms, description, and provenance retained together.
+The project uses active Enterprise ATT&CK `attack-pattern` objects from the official ATT&CK STIX source. For extraction rules, schema details, and the full pipeline flow, please refer to the **[Dataset Notes](docs/dataset-notes.md)**.
 
 ---
 
-## Retrieval evaluation
+## Retrieval Evaluation Summary
 
-The current retrieval benchmark uses 226 Expert-derived cases in:
+The selected v1 configuration utilizes vector retrieval plus local cross-encoder reranking. This approach improved every reported retrieval metric (including MRR and Hit rates) over baseline vector-only retrieval. For the complete benchmark methodology, detailed metric tables, and latency trade-offs, see the **[Evaluation Notes](docs/evaluation-notes.md)**.
 
-```text
-data/eval/expert_retrieval_cases.csv
-```
-
-It compares text-only retrieval, vector retrieval, hybrid retrieval using Reciprocal Rank Fusion, and vector retrieval plus local document reranking.
-
-| Method | Recall@1 | Recall@3 | Recall@5 | Recall@10 | Hit@3 | Hit@10 | MRR |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Text | 0.0088 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0133 | 0.0111 |
-| Vector | 0.1098 | 0.1940 | 0.2710 | 0.3551 | 0.3540 | 0.5619 | 0.3134 |
-| Hybrid | 0.1120 | 0.2029 | 0.2710 | 0.3551 | 0.3628 | 0.5619 | 0.3151 |
-| Vector + reranking | 0.1462 | 0.2526 | 0.3104 | 0.3866 | 0.4159 | 0.5973 | 0.3578 |
-| Query rewrite + vector + rerank | 0.1495 | 0.2966 | 0.3507 | 0.4581 | 0.4690 | 0.6726 | 0.3940 |
-
-The selected v1 configuration is:
-
-```text
-sentence-transformers/all-MiniLM-L6-v2
-        ↓
-pgvector cosine-similarity retrieval of top 20 records
-        ↓
-cross-encoder/ms-marco-MiniLM-L-6-v2 reranking on local CPU
-        ↓
-Ranked ATT&CK candidates
-```
-
-Vector-plus-reranking improved every reported retrieval metric over vector-only retrieval. MRR increased from 0.3134 to 0.3578, and Hit@3 increased from 0.3540 to 0.4159.
-
-Query rewriting further improved all metrics (MRR: 0.3940, Hit@3: 0.4690) but introduced substantial latency: median total retrieval time was 4,362 ms (vs 1,255 ms for vector + rerank), with median query-rewrite time of 3,184 ms. This latency is unacceptable for interactive analyst-assist workflows.
-
-The quality improvement has a latency cost: median end-to-end retrieval time was 1,254.79 ms, p95 end-to-end latency was 1,451.74 ms, median reranking time was 1,223.29 ms, and p95 reranking time was 1,414.23 ms on the current local CPU benchmark. This trade-off is accepted for the v1 analyst-assist workflow.
-
-These results are implementation-comparison results, not final held-out performance. The current 226-case input includes development- and test-derived records; final external evaluation will use frozen development-split curation rules before evaluation against the held-out Expert test split.
-
-Full benchmark methodology, results, and limitations are documented in [`docs/evaluation-notes.md`](docs/evaluation-notes.md).
+The current retrieval and answer-generation results were produced using a 226-case Expert-derived implementation-comparison set. The derived benchmark input is not committed. Reviewers can obtain the upstream Expert dataset from the documented [Security-TTP-Mapping](https://github.com/tumeteor/mitre-ttp-mapping) source and exact revision, then follow the evaluation workflow to recreate or extend the benchmark. Source provenance, methodology, and the exact upstream revision are documented in [`docs/dataset-notes.md`](docs/dataset-notes.md).
 
 ---
 
@@ -221,111 +181,21 @@ Full benchmark methodology, results, and limitations are documented in [`docs/ev
 - Retrieval benchmark scripts and per-case evaluation reports.
 - External Expert-label compatibility validation.
 - Structured answer-generation baseline with primary candidate, alternatives, supporting IDs, uncertainty, grounding note, and review-required output, using vector-plus-reranking retrieval.
-- Pairwise LLM-as-judge evaluation of answer-generation outputs using:
-  - `src.evaluation.run_llm_judge_pairwise` with `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite` as judges.
-  - Randomised A/B presentation of model outputs.
-  - JSON-structured verdicts including reasoning, winner, and confidence.
-- Cross-judge agreement analysis using `src.evaluation.analyze_judge_agreement` and persisted outputs:
-  - `data/evaluation_reports/reranked/judge_agreement_summary.csv`
-  - `data/evaluation_reports/reranked/judge_disagreements.csv`
-- Manual review of all 55 reranked judge-disagreement cases blind to model identity using `app/evaluation.py`.
+- Pairwise LLM-as-judge evaluation of answer-generation outputs using `gemini-3.1-flash-lite` and `gemini-3.5-flash-lite`.
+- Cross-judge agreement analysis and blinded manual review of all 55 reranked judge-disagreement cases.
 - Model-selection decision: `gemini-3.1-flash-lite` selected as default v1 answer-generation model (DEC-021).
-- Streamlit analyst-facing UI and monitoring dashboard:
-  - Main app (`app/home.py`) with Home, Query, Dashboard, and Evaluation Review tabs.
-  - Query interface (`app/query.py`) for incident-to-ATT&CK mapping with vector-plus-reranking retrieval and structured answer generation.
-  - Monitoring dashboard (`app/dashboard.py`) with evaluation charts for latency, both judges' preferences, retrieval comparison, agreement rate, and user feedback.
-  - Evaluation Review tab for manual adjudication of judge-disagreement cases.
-- Persisted feedback capture through `src.monitoring.feedback_store.save_feedback`.
-- Application Dockerfile for Streamlit (`app/Dockerfile`).
-- Docker Compose configuration for PostgreSQL, Streamlit, and automated ingestion (`compose.yaml`).
-- Committed evaluation artefacts for marker inspection under DEC-023.
+- Streamlit analyst-facing UI and monitoring dashboard.
+- Persisted feedback capture.
+- Application Dockerfile and Compose configuration for PostgreSQL, Streamlit, and automated ingestion.
+- Committed evaluation artefacts for marker inspection.
 
 ### Planned
 
-- Finalise a human-readable answer-evaluation rubric and score a review subset.
-- Freeze curation rules using `expert_dev.tsv`.
-- Run final held-out external evaluation against compatible curated `expert_test.tsv` cases.
-- Dynamic dashboard loading for retrieval-comparison benchmark values.
-- Full application Docker Compose configuration for production deployment.
-
----
-
-## Developer rebuild and evaluation
-
-### Prerequisites
-
-- Python version specified in `pyproject.toml`.
-- [uv](https://docs.astral.sh/uv/).
-- Docker Desktop or compatible Docker engine.
-- Git.
-
-### Install and configure
-
-```bash
-git clone <repository-url>
-cd cyber-threat-identifier
-
-uv sync
-
-cp .env.example .env
-
-docker compose up -d
-docker compose ps
-```
-
-Wait until PostgreSQL reports as healthy before continuing.
-
-### Build the corpus
-
-```bash
-uv run python -m src.ingestion.download_attack_data
-
-uv run python -m src.ingestion.extract_attack_techniques
-
-uv run python -m src.database.db_init
-
-uv run python -m src.database.db_load_techniques
-
-uv run python -m src.database.db_build_embeddings
-```
-
-This produces:
-
-```text
-data/processed/techniques.jsonl
-data/source_manifest.csv
-```
-
-and populates:
-
-```text
-techniques
-ingestion_runs
-```
-
-### Run the selected retrieval benchmark
-
-Verify that the local reranker can load:
-
-```bash
-uv run python -c "
-from src.retrieval.reranker import get_reranker_model
-
-get_reranker_model()
-print('Reranker loaded successfully')
-"
-```
-
-Run vector retrieval plus reranking:
-
-```bash
-uv run python -m src.evaluation.run_expert_reranked_vector_retrieval_benchmark \
-  --candidate-k 20 \
-  --top-k 10 \
-  --output data/evaluation_reports/expert_vector_reranked_retrieval_results.csv
-```
-
-For answer-generation, LLM-as-judge evaluation, manual review, and UI commands, see the detailed steps in [`docs/runbook.md`](docs/runbook.md).
+- Optional future work (beyond v1 assessment scope):
+  - Formalise a human-readable answer-evaluation rubric and score an additional review subset.
+  - Freeze curation rules using `expert_dev.tsv` and run a final held-out external evaluation against compatible curated `expert_test.tsv` cases.
+  - Dynamic dashboard loading for retrieval-comparison benchmark values.
+  - Production hardening beyond the current temporary EC2 demonstration deployment.
 
 ---
 
@@ -333,135 +203,46 @@ For answer-generation, LLM-as-judge evaluation, manual review, and UI commands, 
 
 The project includes a Streamlit-based analyst-facing UI and monitoring dashboard.
 
-### Run the UI
-
-Install Streamlit dependencies:
-
-```bash
-make install
-# or:
-uv pip install streamlit plotly matplotlib
-```
-
-Start the main application:
-
-```bash
-make app
-# or:
-PYTHONPATH=. uv run streamlit run app/home.py --server.fileWatcherType=none
-```
-
-The app opens at `http://localhost:8501` (or the port specified in `.env` via `STREAMLIT_PORT`).
-
 ### Tabs
 
 - **Home**: Overview, data sources, and ATT&CK usage information.
-- **Query**: Incident narrative input, retrieval with reranking, structured answer generation using the configured `MODEL_ID`, retrieved-technique inspection, and feedback capture.
+- **Query**: Incident narrative input, retrieval with reranking, structured answer generation, retrieved-technique inspection, and feedback capture.
 - **Dashboard**: Monitoring dashboard with evaluation metrics and charts.
-- **Evaluation Review**: Manual review workflow for cases where the two LLM judges disagree. Supports both the reranked v1 and vector-only baseline disagreement sets, with blinded answers, expected labels, retrieved context, failure-mode tagging, and auditability.
-
-### Run the dashboard standalone
-
-```bash
-make dashboard
-# or:
-PYTHONPATH=. uv run streamlit run app/dashboard.py --server.fileWatcherType=none
-```
-
-The dashboard includes charts for:
-
-1. Answer-generation latency distribution.
-2. Judge preferences: Gemini 3.5 Flash-Lite as judge.
-3. Judge preferences: Gemini 3.1 Flash-Lite as judge.
-4. Retrieval method comparison (MRR & Hit@3).
-5. Judge agreement rate.
-6. User feedback distribution.
-
-### Notes and limitations
-
-- Feedback buttons persist submissions to `data/feedback/feedback.csv`, linked to the query, generated answer, model, and retrieved techniques. An empty feedback chart means no feedback has yet been submitted.
-- The retrieval-comparison chart currently uses hard-coded metrics from DEC-018 and DEC-019; future versions can read dynamically from benchmark CSVs.
-- The dashboard assumes evaluation reports exist; if files are missing, it displays informative error messages.
-- The application Dockerfile runs `streamlit run app/home.py` and requires database and LLM environment variables at runtime.
-- Optional `torchvision` import warnings from `transformers` modules do not affect retrieval, answer generation, or stored evaluation results; they can be avoided by running Streamlit with `--server.fileWatcherType=none`.
-
-For full details, see [`docs/runbook.md`](docs/runbook.md).
+- **Evaluation Review**: Manual review workflow for cases where the two LLM judges disagree.
 
 ---
 
 ## Repository structure
 
-_Representative structure (simplified; some files omitted for brevity):_
+_Representative structure (simplified and alphabetically ordered):_
 
 ```text
 cyber-threat-identifier/
-├── README.md
-├── pyproject.toml
-├── uv.lock
-├── .env.example
-├── .gitignore
-├── compose.yaml
-│
-├── app/                     # Streamlit UI
-│   ├── home.py              # Main tabs (Home / Query / Dashboard / Evaluation Review)
-│   ├── query.py             # Query interface
-│   ├── dashboard.py         # Monitoring dashboard
-│   └── evaluation.py        # Manual-review workflow for judge disagreements
-│
-├── src/
-│   ├── llm_client.py
-│   ├── ingestion/
-│   │   ├── download_attack_data.py
-│   │   └── extract_attack_techniques.py
-│   ├── database/
-│   │   ├── db_init.py
-│   │   ├── db_load_techniques.py
-│   │   └── db_build_embeddings.py
-│   ├── retrieval/
-│   │   ├── embedding_model.py
-│   │   ├── schemas.py
-│   │   ├── text.py
-│   │   ├── vector.py
-│   │   ├── hybrid.py
-│   │   ├── reranker.py
-│   │   ├── reranked_vector.py
-│   │   ├── query_rewriter.py
-│   │   └── rewritten_reranked_vector.py
-│   ├── generation/
-│   │   ├── schemas.py
-│   │   ├── prompts.py
-│   │   └── answer_generator.py
-│   ├── evaluation/
-│   │   ├── metrics.py
-│   │   ├── build_expert_retrieval_cases.py
-│   │   ├── run_expert_text_retrieval_benchmark.py
-│   │   ├── run_expert_vector_retrieval_benchmark.py
-│   │   ├── run_expert_hybrid_retrieval_benchmark.py
-│   │   ├── run_expert_reranked_vector_retrieval_benchmark.py
-│   │   ├── run_expert_query_rewrite_retrieval_benchmark.py
-│   │   ├── run_expert_llm_comparison_reranked.py
-│   │   ├── run_llm_judge_pairwise.py
-│   │   ├── analyze_judge_agreement.py
-│   │   ├── build_manual_review_queue.py
-│   │   ├── summarize_manual_review.py
-│   │   └── validate_external_expert_labels.py
-│   └── monitoring/
-│
-├── data/
-│   ├── processed/
-│   │   └── techniques.jsonl
-│   ├── eval/
-│   │   └── expert_retrieval_cases.csv
-│   ├── evaluation_reports/
-│   │   └── reranked/
-│   └── source_manifest.csv
-│
-└── docs/
-    ├── project-log.md
-    ├── decisions.md
-    ├── dataset-notes.md
-    ├── evaluation-notes.md
-    └── runbook.md
+├── app/                          # Streamlit UI and monitoring dashboard
+├── compose.yaml                  # Docker Compose runtime (PostgreSQL, Streamlit, ingestion)
+├── data/                         # Processed corpus, evaluation inputs/outputs, feedback
+│   ├── eval/                     # Expert-derived retrieval benchmark cases
+│   ├── evaluation_reports/       # Retrieval and LLM-evaluation CSVs
+│   ├── feedback/                 # Persisted user feedback
+│   ├── processed/                # Reviewed ATT&CK techniques JSONL
+│   └── source_manifest.csv       # ATT&CK source provenance
+├── docs/                         # Documentation and assessment artefacts
+│   ├── decisions.md              # Architecture and evaluation decisions (DEC-*)
+│   ├── dataset-notes.md          # Corpus scope, schema, and processing rules
+│   ├── evaluation-notes.md       # Benchmark design, metrics, and results
+│   ├── runbook.md                # Local reproduction, commands, and troubleshooting
+│   └── self-assessment.md        # Criterion-by-criterion self-assessment
+├── pyproject.toml                # Python project metadata and dependencies
+├── README.md                     # Project overview and assessment evidence map
+├── src/                          # Python source code
+│   ├── database/                 # PostgreSQL + pgvector initialisation and loading
+│   ├── evaluation/               # Retrieval benchmarks, LLM-as-judge, and manual review
+│   ├── generation/               # Answer-generation prompts and orchestration
+│   ├── ingestion/                # ATT&CK download and extraction scripts
+│   ├── monitoring/               # Feedback persistence and helpers
+│   └── retrieval/                # Embedding, text, vector, hybrid, reranking, and rewriting
+├── uv.lock                       # Locked Python dependency versions
+└── .env.example                  # Example environment configuration
 ```
 
 ---
@@ -470,10 +251,10 @@ cyber-threat-identifier/
 
 | Document | Purpose |
 |---|---|
-| [`docs/runbook.md`](docs/runbook.md) | Setup, pipeline commands, verification, rebuilds, benchmarks, answer-generation, LLM-as-judge evaluation, manual review, UI, and troubleshooting |
+| [`docs/runbook.md`](docs/runbook.md) | Setup, pipeline commands, verification, rebuilds, benchmarks, answer-generation, UI, and troubleshooting |
 | [`docs/dataset-notes.md`](docs/dataset-notes.md) | Corpus scope, provenance, schema, processing rules, artefact policy, and limitations |
-| [`docs/decisions.md`](docs/decisions.md) | Stable architecture, corpus, retrieval, and evaluation decisions (e.g. DEC‑017, DEC‑018, DEC‑019, DEC‑020, DEC‑021, DEC‑022, DEC‑023) |
-| [`docs/evaluation-notes.md`](docs/evaluation-notes.md) | Benchmark design, metrics, retrieval results, answer evaluation, LLM-as-judge analysis, manual review, and failure analysis |
+| [`docs/decisions.md`](docs/decisions.md) | Stable architecture, corpus, retrieval, and evaluation decisions |
+| [`docs/evaluation-notes.md`](docs/evaluation-notes.md) | Benchmark design, metrics, retrieval results, answer evaluation, LLM-as-judge analysis, and failure analysis |
 | [`docs/project-log.md`](docs/project-log.md) | Chronological progress, discoveries, and immediate next steps |
 
 ---
@@ -482,13 +263,10 @@ cyber-threat-identifier/
 
 - The retrieval corpus contains active Enterprise ATT&CK techniques and sub-techniques only.
 - Results are ranked relevance suggestions for analyst review, not verified incident findings.
-- The local reranker can improve ordering only within its first-stage vector candidate pool; it cannot recover techniques absent from the vector top 20.
+- The local reranker can improve ordering only within its first-stage vector candidate pool.
 - The selected reranker is a compact general-domain model, not a cyber-security-specific reranker.
-- Local CPU reranking adds approximately 1.2 seconds median latency in the current benchmark.
 - Query rewriting improves retrieval quality but adds ~3.1 seconds median latency; it is evaluated but not deployed for interactive use.
-- The current answer-generation pipeline uses vector-plus-reranking retrieval and a selected default model (`gemini-3.1-flash-lite`); prompt, abstention behaviour, and rubric-scored quality are still under evaluation.
-- LLM-as-judge evaluation is not ground truth; both judges show a tendency to prefer `gemini-3.1-flash-lite` on the current dataset, and approximately 24% of cases involve judge disagreement.
-- The manual review of 55 disagreements found 3.1 winning 56.8% of decisive comparisons with a 5-case margin; 32.7% of cases were ties.
+- LLM-as-judge evaluation is not ground truth; both judges show a tendency to prefer `gemini-3.1-flash-lite` on the current dataset.
 - The external Expert dataset is multi-label and does not provide a verified single primary technique.
 - The current 226-case benchmark is not a frozen held-out benchmark.
 - ATT&CK coverage does not guarantee complete behavioural, defensive, detection, or incident-response coverage.
@@ -499,7 +277,7 @@ cyber-threat-identifier/
 
 Cyber Threat Identifier is an independent project. It is not affiliated with, sponsored by, or endorsed by The MITRE Corporation.
 
-MITRE ATT&CK® is used as the project's source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
+MITRE ATT&CK is used as the project's source knowledge base. The project name does not use ATT&CK because MITRE branding guidance restricts ATT&CK use in product, service, company, and logo names.
 
 The repository contains derived ATT&CK content. Any distributed corpus snapshot or derived artefact must retain applicable MITRE copyright, licence, and attribution wording.
 
