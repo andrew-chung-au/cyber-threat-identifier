@@ -1,177 +1,377 @@
 #!/usr/bin/env python3
 """
-Monitoring Dashboard — 5 charts for project evaluation
+Monitoring Dashboard — live PostgreSQL system telemetry.
+
+The dashboard provides five charts and one recent-query table:
+1. User feedback ratio
+2. Incident query volume
+3. Top retrieved ATT&CK techniques
+4. Retrieval-latency distribution
+5. Feedback volume over time
+6. Recent incident logs table
 """
+
 from __future__ import annotations
 
-
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from pathlib import Path
 from datetime import datetime as dt
 
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+from src.database.db_connection import get_connection
+
+
+def fetch_telemetry_data() -> pd.DataFrame:
+    """Fetch query telemetry and optional feedback from PostgreSQL."""
+    sql = """
+        SELECT
+            iq.query_id,
+            iq.query_text,
+            iq.model_id,
+            iq.retrieved_technique_ids,
+            iq.retrieval_ms,
+            iq.created_at AS timestamp_utc,
+            f.feedback,
+            f.created_at AS feedback_timestamp_utc
+        FROM incident_queries iq
+        LEFT JOIN feedback f
+            ON iq.query_id = f.query_id
+        ORDER BY iq.created_at DESC;
+    """
+
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                columns = [description[0] for description in cursor.description]
+
+        return pd.DataFrame(rows, columns=columns)
+
+    except Exception as error:
+        st.error(f"Failed to connect to the telemetry database: {error}")
+        return pd.DataFrame()
 
 
 def render_monitoring_dashboard() -> None:
-    """Render the monitoring dashboard inside a tab or standalone."""
+    """Render the operational monitoring dashboard."""
 
-    # Chart 1: Latency distribution
-    st.subheader("1️⃣ Answer Generation Latency Distribution")
+    st.markdown("### 📊 Live System Telemetry")
 
-    try:
-        df = pd.read_csv("data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv")
+    df = fetch_telemetry_data()
 
-        fig = px.histogram(
-            df,
-            x="latency_seconds",
-            nbins=30,
-            title="Latency Distribution (All Models)",
-            labels={"latency_seconds": "Latency (seconds)"},
-            color_discrete_sequence=["#3498db"],
+    if df.empty:
+        st.info(
+            "No queries logged yet. Run a narrative through the "
+            "Query Interface to populate the dashboard."
         )
-        fig.add_vline(
-            x=df["latency_seconds"].median(),
-            line_dash="dash",
-            line_color="red",
-            annotation_text=f"Median: {df['latency_seconds'].median():.2f}s",
+        return
+
+    # Data preparation
+    df["timestamp_utc"] = pd.to_datetime(
+        df["timestamp_utc"],
+        errors="coerce",
+    )
+    df["feedback_timestamp_utc"] = pd.to_datetime(
+        df["feedback_timestamp_utc"],
+        errors="coerce",
+    )
+    df["retrieval_ms"] = pd.to_numeric(
+        df["retrieval_ms"],
+        errors="coerce",
+    )
+    df["date"] = df["timestamp_utc"].dt.strftime("%Y-%m-%d")
+
+    feedback_df = df.dropna(subset=["feedback"]).copy()
+
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+
+    total_queries = len(df)
+
+    thumbs_up_count = len(
+        feedback_df[feedback_df["feedback"] == "thumbs_up"]
+    )
+    helpfulness_rate = (
+        thumbs_up_count / len(feedback_df)
+        if not feedback_df.empty
+        else 0
+    )
+
+    unique_techniques = 0
+    if "retrieved_technique_ids" in df.columns:
+        all_techniques = (
+            df["retrieved_technique_ids"]
+            .dropna()
+            .astype(str)
+            .str.split("|")
+            .explode()
+            .str.strip()
         )
-        st.plotly_chart(fig, width="stretch")
-    except Exception as e:
-        st.error(f"Could not load latency data: {e}")
+        unique_techniques = all_techniques[all_techniques != ""].nunique()
 
-    # Chart 2: Judge preferences (3.5 as judge)
-    st.subheader("2️⃣ Judge Preferences: Gemini 3.5 Flash-Lite as Judge")
+    average_latency = (
+        df["retrieval_ms"].mean()
+        if not df["retrieval_ms"].isna().all()
+        else 0
+    )
 
-    try:
-        judge_35 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv")
-        prefs_35 = judge_35["winner"].value_counts()
+    col1.metric("Total Queries Logged", total_queries)
+    col2.metric(
+        "Helpfulness Rate",
+        f"{helpfulness_rate:.0%}" if not feedback_df.empty else "N/A",
+    )
+    col3.metric("Unique Techniques Retrieved", unique_techniques)
+    col4.metric(
+        "Average Latency (ms)",
+        f"{average_latency:.0f}" if average_latency > 0 else "N/A",
+    )
 
-        fig = px.bar(
-            x=prefs_35.index,
-            y=prefs_35.values,
-            title="Judge Preferences: Gemini 3.5 Flash-Lite",
-            labels={"x": "Model", "y": "Count"},
-            color=prefs_35.index,
-            color_discrete_map={
-                "gemini-3.1-flash-lite": "#3498db",
-                "gemini-3.5-flash-lite": "#2ecc71",
-            },
-        )
-        st.plotly_chart(fig, width="stretch")
-    except Exception as e:
-        st.error(f"Could not load judge data (3.5): {e}")
+    st.divider()
 
-    # Chart 3: Judge preferences (3.1 as judge)
-    st.subheader("3️⃣ Judge Preferences: Gemini 3.1 Flash-Lite as Judge")
+    # Layout row 1
+    row1_col1, row1_col2 = st.columns(2)
 
-    try:
-        judge_31 = pd.read_csv("data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv")
-        prefs_31 = judge_31["winner"].value_counts()
+    with row1_col1:
+        # Chart 1: User Feedback Ratio
+        st.subheader("1️⃣ User Feedback Ratio")
 
-        fig = px.bar(
-            x=prefs_31.index,
-            y=prefs_31.values,
-            title="Judge Preferences: Gemini 3.1 Flash-Lite",
-            labels={"x": "Model", "y": "Count"},
-            color=prefs_31.index,
-            color_discrete_map={
-                "gemini-3.1-flash-lite": "#3498db",
-                "gemini-3.5-flash-lite": "#2ecc71",
-            },
-        )
-        st.plotly_chart(fig, width="stretch")
-    except Exception as e:
-        st.error(f"Could not load judge data (3.1): {e}")
+        if not feedback_df.empty:
+            feedback_counts = (
+                feedback_df["feedback"]
+                .value_counts()
+                .rename_axis("Feedback Type")
+                .reset_index(name="Count")
+            )
 
-    # Chart 4: Retrieval method comparison
-    st.subheader("4️⃣ Retrieval Method Comparison (MRR & Hit@3)")
-
-    try:
-        methods = ["Vector Only", "Vector+Rerank", "Query Rewrite+Rerank"]
-        mrr = [0.3134, 0.3578, 0.3940]
-        hit3 = [0.3540, 0.4159, 0.4690]
-
-        df = pd.DataFrame({
-            "Method": methods * 2,
-            "Score": mrr + hit3,
-            "Metric": ["MRR"] * 3 + ["Hit@3"] * 3,
-        })
-
-        fig = px.bar(
-            df,
-            x="Method",
-            y="Score",
-            color="Metric",
-            barmode="group",
-            title="Retrieval Method Comparison (MRR & Hit@3)",
-            color_discrete_sequence=["#3498db", "#2ecc71"],
-        )
-        st.plotly_chart(fig, width="stretch")
-    except Exception as e:
-        st.error(f"Could not load retrieval comparison data: {e}")
-
-    # Chart 5: Judge agreement rate
-    st.subheader("5️⃣ Judge Agreement Rate")
-
-    try:
-        agreement = pd.read_csv("data/evaluation_reports/reranked/judge_agreement_summary.csv")
-        agree_rate = agreement["agreement_rate"].iloc[0]
-
-        fig = px.pie(
-            values=[agree_rate, 1 - agree_rate],
-            names=["Agreement", "Disagreement"],
-            title=f"Judge Agreement Rate: {agree_rate:.2%}",
-            color_discrete_sequence=["#2ecc71", "#e74c3c"],
-        )
-        st.plotly_chart(fig, width="stretch")
-    except Exception as e:
-        st.error(f"Could not load agreement data: {e}")
-
-    # Chart 6: User feedback distribution
-    st.subheader("6️⃣ User Feedback Distribution")
-
-    feedback_path = Path("data/feedback/feedback.csv")
-
-    if not feedback_path.exists():
-        st.info("No feedback collected yet. Use the main app to submit feedback!")
-    else:
-        feedback_df = pd.read_csv(feedback_path)
-
-        if feedback_df.empty or "feedback" not in feedback_df.columns:
-            st.info("No feedback collected yet. Use the main app to submit feedback!")
-        else:
-            counts = feedback_df["feedback"].value_counts()
-
-            fig = px.bar(
-                x=counts.index,
-                y=counts.values,
-                title="User Feedback (Thumbs Up/Down)",
-                labels={"x": "Feedback Type", "y": "Count"},
-                color=counts.index,
+            figure_1 = px.pie(
+                feedback_counts,
+                names="Feedback Type",
+                values="Count",
+                hole=0.4,
+                color="Feedback Type",
                 color_discrete_map={
                     "thumbs_up": "#2ecc71",
                     "thumbs_down": "#e74c3c",
                 },
             )
-            st.plotly_chart(fig, width="stretch")
+            figure_1.update_layout(
+                margin=dict(t=20, b=20, l=20, r=20),
+            )
+            st.plotly_chart(
+                figure_1,
+                use_container_width=True,
+            )
+        else:
+            st.info("No feedback has been submitted yet.")
+
+    with row1_col2:
+        # Chart 2: Query Volume Over Time
+        st.subheader("2️⃣ Incident Query Volume")
+
+        daily_query_counts = (
+            df.dropna(subset=["date"])
+            .groupby("date")
+            .size()
+            .reset_index(name="Queries")
+        )
+
+        figure_2 = px.bar(
+            daily_query_counts,
+            x="date",
+            y="Queries",
+            labels={
+                "date": "Date",
+                "Queries": "Number of Queries",
+            },
+            color_discrete_sequence=["#3498db"],
+        )
+        figure_2.update_layout(
+            margin=dict(t=20, b=20, l=20, r=20),
+        )
+        st.plotly_chart(
+            figure_2,
+            use_container_width=True,
+        )
+
+    # Layout row 2
+    row2_col1, row2_col2 = st.columns(2)
+
+    with row2_col1:
+        # Chart 3: Top Retrieved ATT&CK Techniques
+        st.subheader("3️⃣ Top Retrieved ATT&CK Techniques")
+
+        if "retrieved_technique_ids" in df.columns:
+            exploded_techniques = (
+                df["retrieved_technique_ids"]
+                .dropna()
+                .astype(str)
+                .str.split("|")
+                .explode()
+                .str.strip()
+            )
+            exploded_techniques = exploded_techniques[
+                exploded_techniques != ""
+            ]
+
+            if not exploded_techniques.empty:
+                top_techniques = (
+                    exploded_techniques
+                    .value_counts()
+                    .head(10)
+                    .rename_axis("Technique ID")
+                    .reset_index(name="Count")
+                    .sort_values("Count", ascending=True)
+                )
+
+                figure_3 = px.bar(
+                    top_techniques,
+                    x="Count",
+                    y="Technique ID",
+                    orientation="h",
+                    color_discrete_sequence=["#9b59b6"],
+                )
+                figure_3.update_layout(
+                    margin=dict(t=20, b=20, l=20, r=20),
+                )
+                st.plotly_chart(
+                    figure_3,
+                    use_container_width=True,
+                )
+            else:
+                st.info("No techniques retrieved yet.")
+        else:
+            st.info("Technique telemetry is unavailable.")
+
+    with row2_col2:
+        # Chart 4: Retrieval Latency Distribution
+        st.subheader("4️⃣ Retrieval Latency (ms)")
+
+        latency_df = df.dropna(subset=["retrieval_ms"])
+
+        if not latency_df.empty:
+            figure_4 = px.histogram(
+                latency_df,
+                x="retrieval_ms",
+                nbins=20,
+                labels={
+                    "retrieval_ms": "Latency (ms)",
+                },
+                color_discrete_sequence=["#e67e22"],
+            )
+            figure_4.update_layout(
+                margin=dict(t=20, b=20, l=20, r=20),
+                xaxis_title="Milliseconds",
+                yaxis_title="Count",
+            )
+            st.plotly_chart(
+                figure_4,
+                use_container_width=True,
+            )
+        else:
+            st.info(
+                "Latency data will appear once new queries are logged."
+            )
+
+    # Chart 5: Feedback Volume Over Time
+    st.subheader("5️⃣ Feedback Volume Over Time")
+
+    feedback_volume_df = feedback_df.dropna(
+        subset=["feedback_timestamp_utc"],
+    ).copy()
+
+    if not feedback_volume_df.empty:
+        feedback_volume_df["feedback_date"] = (
+            feedback_volume_df["feedback_timestamp_utc"]
+            .dt.strftime("%Y-%m-%d")
+        )
+
+        daily_feedback_counts = (
+            feedback_volume_df
+            .groupby("feedback_date")
+            .size()
+            .reset_index(name="Feedback Submissions")
+        )
+
+        figure_5 = px.bar(
+            daily_feedback_counts,
+            x="feedback_date",
+            y="Feedback Submissions",
+            labels={
+                "feedback_date": "Date",
+                "Feedback Submissions": (
+                    "Number of Feedback Submissions"
+                ),
+            },
+            color_discrete_sequence=["#1abc9c"],
+        )
+        figure_5.update_layout(
+            margin=dict(t=20, b=20, l=20, r=20),
+        )
+        st.plotly_chart(
+            figure_5,
+            use_container_width=True,
+        )
+    else:
+        st.info(
+            "Feedback volume will appear after users submit feedback."
+        )
+
+    # Recent incident logs table
+    st.subheader("6️⃣ Recent Incident Logs")
+
+    display_columns = [
+        "timestamp_utc",
+        "query_id",
+        "model_id",
+        "retrieval_ms",
+        "feedback",
+        "query_text",
+    ]
+
+    available_columns = [
+        column
+        for column in display_columns
+        if column in df.columns
+    ]
+
+    recent_df = df[available_columns].copy()
+
+    if "timestamp_utc" in recent_df.columns:
+        recent_df["timestamp_utc"] = recent_df[
+            "timestamp_utc"
+        ].dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    if "query_text" in recent_df.columns:
+        recent_df["query_text"] = recent_df["query_text"].apply(
+            lambda value: (
+                f"{value[:100]}..."
+                if isinstance(value, str) and len(value) > 100
+                else value
+            )
+        )
+
+    st.dataframe(
+        recent_df.head(20),
+        use_container_width=True,
+        hide_index=True,
+    )
 
     # Footer
     st.divider()
     st.markdown(
         f"""
         <div style='text-align: center; color: gray; font-size: 0.9em;'>
-            <b>Monitoring Dashboard</b> | Last updated: {dt.now().strftime("%Y-%m-%d %H:%M")}
+            <b>Live Telemetry Dashboard</b> |
+            Last updated: {dt.now().strftime("%Y-%m-%d %H:%M")}
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-
 if __name__ == "__main__":
-    # Standalone mode if you ever want to run `streamlit run app/dashboard.py`
     st.set_page_config(
         page_title="Dashboard",
         page_icon="📊",

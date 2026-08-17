@@ -22,7 +22,7 @@ If you are evaluating this project against the course rubric, use this section t
 
 *   **Containerization (2/2) & Reproducibility (2/2):** The database, UI, and ingestion pipeline run entirely via Docker Compose. You can reproduce the full environment from scratch using the **Quick start** commands below. Dependency versions are strictly locked in `uv.lock`.
 *   **Ingestion Pipeline (2/2):** Running `make ingest` triggers a fully automated pipeline (via Docker Compose) that downloads the upstream STIX source, extracts technique records, initializes the pgvector schema, loads the data, and generates embeddings.
-*   **Interface (2/2) & Monitoring (2/2):** Open `http://localhost:8501` to access the Streamlit UI. The **Dashboard** tab contains six distinct charts tracking latency, judge preferences, retrieval comparisons, and agreement rates. The Query tab captures user feedback.
+*   **Interface (2/2) & Monitoring (2/2):** Open `http://localhost:8501` to access the Streamlit UI. The **Query** tab performs incident analysis, logs runtime telemetry to PostgreSQL after successful analysis, and accepts optional user feedback. The **Dashboard** tab reads live PostgreSQL telemetry and presents five charts—feedback ratio, query volume, retrieved-technique frequency, retrieval latency, and feedback volume—plus a recent incident-log table.
 *   **Retrieval Evaluation (2/2) & Best Practices (+3 Bonus):** Multiple retrieval approaches were evaluated. The project implements and benchmarks **Hybrid Search**, **Document Reranking** (selected as default), and **User Query Rewriting**. See the [Retrieval benchmarks](#retrieval-benchmarks) section below.
 *   **LLM Evaluation (2/2):** Multiple answer-generation models were evaluated using a reciprocal LLM-as-judge pipeline and blinded manual review. See the [Pairwise LLM-as-judge evaluation](#pairwise-llm-as-judge-evaluation) section below.
 
@@ -240,6 +240,8 @@ data/source_manifest.csv              Download provenance and checksums
 data/processed/techniques.jsonl       Processed inspectable corpus snapshot
 PostgreSQL techniques table           Canonical loaded technique records
 PostgreSQL ingestion_runs table       Pipeline audit records
+PostgreSQL incident_queries table     Live telemetry for generated queries
+PostgreSQL feedback table             Live telemetry for user feedback
 ```
 
 ### Pinned source option
@@ -379,6 +381,55 @@ A successful build has:
 - No missing embeddings after the embedding stage
 - Non-empty `embedding_text` values available for retrieval and reranking
 - A Streamlit-container database connection that can query `techniques`
+
+### Verify runtime telemetry
+
+Run an analysis from the Query tab before using these checks.
+
+Confirm that the telemetry tables exist:
+
+```bash
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name IN ('incident_queries', 'feedback')
+    ORDER BY table_name;
+  "
+```
+
+Inspect recently logged queries and any linked feedback:
+
+```bash
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      iq.created_at,
+      iq.query_id,
+      iq.model_id,
+      iq.retrieval_ms,
+      iq.retrieved_technique_ids,
+      f.feedback,
+      f.created_at AS feedback_created_at
+    FROM incident_queries iq
+    LEFT JOIN feedback f ON iq.query_id = f.query_id
+    ORDER BY iq.created_at DESC
+    LIMIT 10;
+  "
+```
+
+Expected workflow:
+
+1. Run a Query analysis.
+2. Confirm an `incident_queries` row exists before feedback is selected.
+3. Select **Helpful** or **Not helpful**.
+4. Confirm a linked `feedback` row exists.
+5. Open the Dashboard and confirm that the live telemetry views update.
 
 ---
 
@@ -907,47 +958,49 @@ The Query tab requires:
 
 **Sample queries:** The public Query interface loads demonstration narratives from `data/sample_queries.json`. It does not load narratives from restricted expert-evaluation files under `data/evaluation_reports/local/`.
 
-### Feedback persistence
+### Runtime telemetry and feedback persistence
 
-Feedback is saved through `src.monitoring.feedback_store.save_feedback`:
+Runtime telemetry and feedback are stored in PostgreSQL through `src/monitoring/feedback_store.py`.
 
-```text
-data/feedback/feedback.csv
-```
+After a successful Query analysis, `app/query.py` creates a UUID `query_id` and calls `save_incident_query()`. This writes one row to `incident_queries` containing:
 
-A feedback record includes:
-
-- Query ID
-- Feedback type
-- Configured model ID
-- Original query text
-- Generated structured answer
+- The incident narrative
+- The serialised generated answer
+- The configured model ID
 - Retrieved ATT&CK technique IDs
+- Total retrieval latency in milliseconds
+- The creation timestamp
 
-Runtime feedback remains local and is not treated as representative production-quality evidence.
+This query record is written independently of user feedback. The telemetry write is attempted immediately after answer generation; if logging fails, the application logs the failure without blocking the user-facing result.
 
-### Dashboard charts
+When a user selects **Helpful** or **Not helpful**, `save_feedback()` writes a related row to `feedback`. The feedback row uses `query_id` as a foreign key to `incident_queries(query_id)`.
 
-The Dashboard displays six charts:
+| Table | Purpose | Key fields |
+|---|---|---|
+| `incident_queries` | One runtime telemetry record per successfully generated analysis | `query_id`, `query_text`, `answer_text`, `model_id`, `retrieved_technique_ids`, `retrieval_ms`, `created_at` |
+| `feedback` | Optional user helpfulness feedback for a logged query | `query_id`, `feedback`, `created_at` |
 
-1. **Answer Generation Latency Distribution**
-2. **Judge Preferences: Gemini 3.5 Flash-Lite as Judge**
-3. **Judge Preferences: Gemini 3.1 Flash-Lite as Judge**
-4. **Retrieval Method Comparison (MRR & Hit@3)**
-5. **Judge Agreement Rate**
-6. **User Feedback Distribution**
+The `feedback.query_id` foreign key uses `ON DELETE CASCADE`, so feedback associated with a deleted query is removed automatically.
 
-The dashboard reads completed answer-generation and judge artefacts where available. If a required artefact is missing, the relevant chart should report that problem without failing the full app.
+Runtime telemetry remains part of the local PostgreSQL volume in the demonstration deployment. It is useful for operational inspection but must not be treated as representative answer-quality evidence.
 
-The retrieval-comparison chart currently uses explicit accepted benchmark values in `app/dashboard.py`. It does not dynamically load retrieval benchmark CSV files. Update the constants if the accepted benchmark baseline changes.
+### Dashboard views
 
-If no feedback has been submitted, the dashboard correctly displays:
+The Dashboard reads live runtime telemetry from PostgreSQL through `app/dashboard.py`.
 
-```text
-No feedback collected yet. Use the main app to submit feedback!
-```
+The application queries `incident_queries` and `feedback` using a SQL `LEFT JOIN`, so a query remains visible even when the user has not submitted feedback.
 
-This is an empty-state message, not a feedback-store failure.
+The Dashboard provides five charts:
+
+1. **User Feedback Ratio** — thumbs-up and thumbs-down feedback ratio.
+2. **Incident Query Volume** — logged query count by date.
+3. **Top Retrieved ATT&CK Techniques** — most frequently retrieved technique IDs.
+4. **Retrieval Latency** — distribution of `retrieval_ms` values.
+5. **Feedback Volume Over Time** — feedback submissions grouped by date.
+
+The Dashboard also provides a **Recent Incident Logs** table showing recent query timestamps, query IDs, model IDs, retrieval latency, feedback state, and truncated query text.
+
+If no queries have been logged, the Dashboard displays an empty-state message. Missing feedback for an existing query is expected and does not indicate a database failure.
 
 ### Host-side Streamlit commands
 
@@ -1298,38 +1351,70 @@ If results are missing, open the **Evaluation Review** tab and complete the blin
 
 ---
 
-### Dashboard chart errors
+### Dashboard telemetry errors
 
-Check the required reranked evaluation artefacts:
+The Dashboard requires the `incident_queries` and `feedback` tables.
+
+Check that the tables exist:
 
 ```bash
-ls -lh \
-  data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv \
-  data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv \
-  data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv \
-  data/evaluation_reports/reranked/judge_agreement_summary.csv
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "\dt"
 ```
 
-The repository includes completed artefacts for inspection. Re-run the underlying workflow only if you intentionally need regenerated results.
+Check for logged query events:
+
+```bash
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT
+      query_id,
+      model_id,
+      retrieval_ms,
+      created_at
+    FROM incident_queries
+    ORDER BY created_at DESC
+    LIMIT 10;
+  "
+```
+
+If the tables do not exist, initialise the database through the normal ingestion workflow:
+
+```bash
+make ingest
+```
+
+If the tables exist but contain no rows, open the Query tab and run a successful analysis. Query telemetry is written after analysis completes, before optional feedback is submitted.
 
 ---
 
 ### Dashboard shows no feedback
 
-The empty-state message means that `data/feedback/feedback.csv` is absent, empty, or contains no usable feedback values.
+The empty-state message means that the `incident_queries` and `feedback` PostgreSQL tables are currently empty.
 
-To create feedback:
+To generate telemetry and feedback:
 
 1. Open the Query tab.
 2. Run an analysis.
 3. Select **Helpful** or **Not helpful**.
-4. Confirm the app reports that feedback was saved.
+4. Confirm the app reports that feedback was saved securely to PostgreSQL.
 
-Then inspect the output:
+Then inspect the database output directly:
 
 ```bash
-ls -lh data/feedback/feedback.csv
-head -n 5 data/feedback/feedback.csv
+docker compose exec postgres psql \
+  -U postgres \
+  -d cyber_threat_identifier \
+  -c "
+    SELECT iq.query_text, f.feedback 
+    FROM incident_queries iq 
+    LEFT JOIN feedback f ON iq.query_id = f.query_id 
+    LIMIT 5;
+  "
 ```
 
 ---
@@ -1358,7 +1443,7 @@ This runbook covers:
 - Reranked answer-generation comparison
 - Reciprocal pairwise LLM-as-judge evaluation
 - Blinded manual review of judge disagreements
-- Persisted local feedback capture
+- PostgreSQL-backed runtime query telemetry and optional feedback capture
 - Streamlit Query, Dashboard, and Evaluation Review workflows
 - External Expert-dataset inspection and label compatibility validation
 

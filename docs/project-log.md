@@ -680,6 +680,52 @@ Commit the documentation updates, verify the sample-query path on the live insta
 
 ---
 
+---
+
+## 2026-08-18 — PostgreSQL runtime telemetry migration
+
+### Stage
+
+Runtime telemetry persistence, dashboard migration, deployment maintenance, and documentation alignment.
+
+### Goal
+
+Replace the local CSV feedback mechanism with relational PostgreSQL telemetry so that successful Query analyses are logged independently of optional user feedback and displayed through a live SQL-backed dashboard.
+
+### What was done
+
+- Replaced the local `feedback.csv` persistence path with PostgreSQL telemetry tables.
+- Added `incident_queries` to store one runtime record for each successfully generated analysis.
+- Added `feedback` to store optional thumbs-up or thumbs-down ratings linked to `incident_queries` through `query_id`.
+- Updated `src/database/db_init.py` to create the telemetry tables and the feedback foreign-key relationship.
+- Updated `src/monitoring/feedback_store.py` to insert query telemetry and feedback directly through `psycopg`.
+- Updated `app/query.py` to create a UUID query identifier and attempt query logging immediately after successful answer generation.
+- Updated `app/dashboard.py` to query `incident_queries` and `feedback` through SQL and display live operational telemetry.
+- Rebuilt the Docker Compose stack after the telemetry migration and removed unused Docker images, containers, and cache data to recover EC2 disk space.
+
+### What was learned
+
+- Query telemetry and user feedback are different events and should not depend on each other.
+- A relational database makes it possible to inspect query volume, latency, retrieved techniques, and optional feedback without reading or rewriting a shared CSV file.
+- A `LEFT JOIN` preserves logged query events even when no feedback has been submitted.
+- Database-backed persistence improves runtime telemetry reliability for the demonstration deployment, but it does not by itself make the temporary single-instance EC2 environment production-ready.
+
+### Decision made
+
+Use PostgreSQL as the runtime telemetry and user-feedback store for version 1. See DEC-027.
+
+### Problems or uncertainties
+
+- The current schema permits multiple feedback rows for a single `query_id`; this is acceptable for an event-history model but should be revisited if the product rule becomes one rating per query.
+- Runtime telemetry remains stored in the local PostgreSQL volume and is not a substitute for managed production observability, backups, authentication, or external monitoring.
+- Telemetry logging failures are intentionally non-blocking for the Query UI and must be detected through application logs.
+
+### Next step
+
+Run an end-to-end telemetry verification: generate an analysis, confirm an `incident_queries` row exists before feedback submission, submit feedback, confirm the linked `feedback` row, and inspect all five dashboard views.
+
+---
+
 ## Template for future entries
 
 ## YYYY-MM-DD — Short stage title

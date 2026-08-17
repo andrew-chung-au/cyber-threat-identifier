@@ -95,6 +95,41 @@ def create_schema(connection: psycopg.Connection[Any]) -> None:
             """
         )
 
+        # --- NEW TELEMETRY TABLES ---
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS incident_queries (
+                id BIGSERIAL PRIMARY KEY,
+                query_id UUID UNIQUE NOT NULL,
+                query_text TEXT NOT NULL,
+                answer_text TEXT,
+                model_id TEXT,
+                retrieved_technique_ids TEXT,
+                retrieval_ms DOUBLE PRECISION,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+                id BIGSERIAL PRIMARY KEY,
+                query_id UUID REFERENCES incident_queries(query_id) ON DELETE CASCADE,
+                feedback TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS feedback_query_id_idx
+            ON feedback (query_id)
+            """
+        )
+        # ----------------------------
+
     connection.commit()
     ok("Database schema is ready")
 
@@ -112,6 +147,7 @@ def main() -> None:
     ok("Database initialisation completed successfully")
     print("  Database table: techniques")
     print("  Audit table:    ingestion_runs")
+    print("  Logging tables: incident_queries, feedback")
 
 
 if __name__ == "__main__":
