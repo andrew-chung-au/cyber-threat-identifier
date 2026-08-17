@@ -19,7 +19,7 @@ It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and 
 ## Reviewer Navigation
 
 *   **[Self-Assessment & Rubric Mapping](docs/self-assessment.md):** Start here for a direct map of project features to course evaluation criteria.
-*   **[Live Demo](http://44.222.157.15:8501/):** Open the AWS EC2 deployment for a 5-minute review.
+*   **[Live Demo](http://32.199.23.249:8501/):** Open the AWS EC2 deployment for a 5-minute review.
 *   **[Runbook](docs/runbook.md):** Complete steps for local reproduction and evaluation benchmark execution.
 
 ---
@@ -38,7 +38,7 @@ For reviewers short on time, here is a high-level summary of the system's archit
 
 ## Live demo
 
-**[Open Cyber Threat Identifier](http://44.222.157.15:8501/)**
+**[Open Cyber Threat Identifier](http://32.199.23.249:8501/)**
 
 The application is deployed temporarily on AWS EC2 for reviewer access. It runs the same Docker Compose stack documented for local reproduction.
 
@@ -50,7 +50,7 @@ The deployment is a demonstration environment, not a production service. It does
 
 You do not need to clone the repository to review the main application workflow.
 
-1. Open the [live demo](http://44.222.157.15:8501/).
+1. Open the [live demo](http://32.199.23.249:8501/).
 2. Select **Query**.
 3. Choose a public sample query or paste a short incident narrative, for example:
 
@@ -92,7 +92,7 @@ Structured candidate assessment using gemini-3.1-flash-lite
 | Knowledge base plus LLM flow | [Data Flow](#data-flow), `src/retrieval/`, `src/generation/` |
 | Retrieval evaluation | [Retrieval Evaluation Summary](#retrieval-evaluation-summary), [`docs/evaluation-notes.md`](docs/evaluation-notes.md) |
 | LLM evaluation | [`docs/evaluation-notes.md`](docs/evaluation-notes.md), `data/evaluation_reports/reranked/` |
-| Interface | [Live demo](http://44.222.157.15:8501/), `app/` |
+| Interface | [Live demo](http://32.199.23.249:8501/), `app/` |
 | Automated ingestion | [`compose.yaml`](compose.yaml), `src/ingestion/`, `src/database/` |
 | Monitoring | `app/dashboard.py`, `src/monitoring/feedback_store.py` |
 | Containerization | [`app/Dockerfile`](app/Dockerfile), [`compose.yaml`](compose.yaml) |

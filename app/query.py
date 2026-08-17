@@ -15,18 +15,33 @@ import streamlit as st
 
 from src.database.db_connection import get_connection
 from src.generation.answer_generator import generate_candidate_answer
+from src.monitoring.feedback_store import save_feedback
 from src.retrieval.embedding_model import get_embedding_model
+from src.retrieval.generation_context import fetch_records_for_generation
 from src.retrieval.reranked_vector import retrieve_reranked_vector
 from src.retrieval.reranker import get_reranker_model
-from src.retrieval.generation_context import fetch_records_for_generation
-from src.monitoring.feedback_store import save_feedback
 
 
 def render_query_interface() -> None:
+    if "query_text" not in st.session_state:
+        st.session_state.query_text = ""
+
+    if "sample_loaded" not in st.session_state:
+        st.session_state.sample_loaded = False
+
+    def load_sample_query(narrative: str) -> None:
+        st.session_state.query_text = narrative
+        st.session_state.sample_loaded = True
+
     st.subheader("Incident narrative")
-    query = st.text_area(
+
+    st.text_area(
         "Describe the incident:",
-        placeholder="E.g., 'Attackers used PowerShell scripts to download and execute malware...'",
+        key="query_text",
+        placeholder=(
+            "E.g., 'Attackers used PowerShell scripts to download "
+            "and execute malware...'"
+        ),
         height=150,
         label_visibility="collapsed",
     )
@@ -38,26 +53,28 @@ def render_query_interface() -> None:
 
     if sample_queries_path.exists():
         try:
-            with sample_queries_path.open("r", encoding="utf-8") as f:
-                sample_queries = json.load(f)
-        except Exception:
-            # Silently ignore malformed sample file; do not show an error to users.
-            sample_queries = []
+            with sample_queries_path.open("r", encoding="utf-8") as file:
+                sample_queries = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            st.warning("Sample queries could not be loaded.")
 
     if sample_queries:
-        cols = st.columns(min(len(sample_queries), 3))
-        for i, sq in enumerate(sample_queries):
-            with cols[i % len(cols)]:
-                if st.button(
-                    f"Sample {i + 1}",
-                    key=f"sample_query_{sq['id']}",
+        columns = st.columns(min(len(sample_queries), 3))
+
+        for index, sample_query in enumerate(sample_queries):
+            with columns[index % len(columns)]:
+                st.button(
+                    f"Sample {index + 1}",
+                    key=f"sample_query_{sample_query['id']}",
                     use_container_width=True,
-                ):
-                    query = sq["narrative"]
-                    st.info("Sample query loaded. You can edit it before running analysis.")
-    else:
-        # No sample file or empty list: show nothing, no error.
-        pass
+                    on_click=load_sample_query,
+                    args=(sample_query["narrative"],),
+                )
+
+    if st.session_state.sample_loaded:
+        st.info("Sample query loaded. You can edit it before running analysis.")
+
+    query = st.session_state.query_text
 
     run_button = st.button(
         "🔍 Analyze",
@@ -102,11 +119,13 @@ def render_query_interface() -> None:
                     "query_id": str(uuid.uuid4()),
                     "query": query,
                     "answer": generation_result.answer,
-                    "model_id": os.getenv("MODEL_ID"),  # no fallback; must be set in .env
+                    "model_id": os.getenv("MODEL_ID"),
                     "retrieved_ids": retrieved_ids,
                     "retrieval_ms": reranked_result.total_retrieval_ms,
                     "feedback_submitted": False,
                 }
+
+                st.session_state.sample_loaded = False
 
             except Exception as error:
                 st.error(f"❌ Error during analysis: {error}")
@@ -131,6 +150,7 @@ def render_query_interface() -> None:
         st.write(answer.uncertainty_note)
 
     st.markdown("### Retrieved techniques")
+
     if not result["retrieved_ids"]:
         st.info("No techniques were retrieved for this query.")
     else:
@@ -140,9 +160,9 @@ def render_query_interface() -> None:
                 attack_ids=result["retrieved_ids"],
             )
 
-        for i, row in enumerate(rows, 1):
+        for index, row in enumerate(rows, 1):
             with st.expander(
-                f"#{i}: {row['attack_id']} — {row['name']} "
+                f"#{index}: {row['attack_id']} — {row['name']} "
                 f"(retrieved via reranking)"
             ):
                 st.markdown(f"**Technique ID:** `{row['attack_id']}`")
@@ -158,44 +178,46 @@ def render_query_interface() -> None:
 
     if result.get("feedback_submitted", False):
         st.success("Thanks — your feedback has been recorded.")
-    else:
-        col1, col2 = st.columns(2)
+        return
 
-        with col1:
-            helpful_clicked = st.button(
-                "👍 Helpful",
-                key=f"feedback_up_{result['query_id']}",
+    col1, col2 = st.columns(2)
+
+    with col1:
+        helpful_clicked = st.button(
+            "👍 Helpful",
+            key=f"feedback_up_{result['query_id']}",
+        )
+
+    with col2:
+        not_helpful_clicked = st.button(
+            "👎 Not helpful",
+            key=f"feedback_down_{result['query_id']}",
+        )
+
+    selected_feedback = None
+
+    if helpful_clicked:
+        selected_feedback = "thumbs_up"
+    elif not_helpful_clicked:
+        selected_feedback = "thumbs_down"
+
+    if selected_feedback:
+        try:
+            saved_path = save_feedback(
+                query_id=result["query_id"],
+                feedback=selected_feedback,
+                model_id=result["model_id"],
+                query_text=result["query"],
+                answer_text=result["answer"].model_dump_json(),
+                retrieved_technique_ids=result["retrieved_ids"],
             )
 
-        with col2:
-            not_helpful_clicked = st.button(
-                "👎 Not helpful",
-                key=f"feedback_down_{result['query_id']}",
-            )
+            st.session_state.analysis_result["feedback_submitted"] = True
+            st.success(f"Feedback saved to `{saved_path}`.")
+            st.rerun()
 
-        selected_feedback = None
-        if helpful_clicked:
-            selected_feedback = "thumbs_up"
-        elif not_helpful_clicked:
-            selected_feedback = "thumbs_down"
-
-        if selected_feedback:
-            try:
-                saved_path = save_feedback(
-                    query_id=result["query_id"],
-                    feedback=selected_feedback,
-                    model_id=result["model_id"],
-                    query_text=result["query"],
-                    answer_text=result["answer"].model_dump_json(),
-                    retrieved_technique_ids=result["retrieved_ids"],
-                )
-
-                st.session_state.analysis_result["feedback_submitted"] = True
-                st.success(f"Feedback saved to `{saved_path}`.")
-                st.rerun()
-
-            except Exception as error:
-                st.error(f"Could not save feedback: {error}")
+        except Exception as error:
+            st.error(f"Could not save feedback: {error}")
 
 
 if __name__ == "__main__":

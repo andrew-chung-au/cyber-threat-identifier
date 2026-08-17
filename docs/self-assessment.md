@@ -14,7 +14,7 @@ The application is currently running locally via Docker Compose and has been dep
 
 **Live deployed application:**
 
-**[Cyber Threat Identifier — Streamlit app](http://44.222.157.15/:8501/)**
+**[Cyber Threat Identifier — Streamlit app](http://32.199.23.249/:8501/)**
 
 The instance runs the same Docker Compose stack used for local reproduction.
 

@@ -40,7 +40,7 @@ make up
 make ingest
 ```
 
-Then open:
+Then open the application in a browser:
 
 ```text
 http://localhost:8501
