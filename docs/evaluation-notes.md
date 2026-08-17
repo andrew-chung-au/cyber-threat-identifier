@@ -464,9 +464,9 @@ These metrics indicate that:
 - LLM judges agree on the better answer in roughly three-quarters of cases.
 - Both judges show a consistent tendency to prefer `gemini-3.1-flash-lite` answers on this dataset.
 
-The judge outputs and agreement metrics are visualised in the Streamlit monitoring dashboard (`app/dashboard.py`), which includes charts for:
-- Judge agreement rate.
-- Judge preferences for each judge model.
+The judge outputs and agreement metrics are stored as offline evaluation artefacts and can be inspected through the committed evaluation reports. They are not part of the current live runtime telemetry Dashboard.
+
+The current `app/dashboard.py` is dedicated to PostgreSQL-backed operational telemetry. It displays query volume, retrieved-technique frequency, retrieval latency, feedback ratio, and recent incident-query logs.
 
 ### Manual review of disagreements
 
@@ -505,75 +505,49 @@ The final model-selection decision is documented in DEC-021.
 
 ---
 
-## Streamlit monitoring dashboard
+## Runtime telemetry dashboard
 
-### Goal
+### Purpose
 
-Provide an interactive interface for:
-- Inspecting evaluation metrics and latency distributions.
-- Visualising judge preferences and agreement rates.
-- Supporting future manual review of disagreement cases.
+The Streamlit Dashboard provides live operational visibility into interactive Query workflow usage. It is separate from the offline retrieval and answer-generation evaluation artefacts described elsewhere in this document.
+
+### Telemetry persistence
+
+Runtime telemetry migrated from a local CSV feedback file to PostgreSQL.
+
+After a successful Query analysis, the application attempts to insert an `incident_queries` record containing the narrative, serialised generated answer, configured model ID, retrieved ATT&CK technique IDs, retrieval latency, and timestamp.
+
+User feedback is optional. When a user selects **Helpful** or **Not helpful**, the application inserts a related `feedback` row using the same `query_id`.
+
+The telemetry schema is:
+
+| Table | Purpose |
+|---|---|
+| `incident_queries` | Stores one logged runtime analysis event after successful answer generation |
+| `feedback` | Stores optional thumbs-up or thumbs-down feedback linked to a query event |
 
 ### Dashboard contents
 
-Implemented in `app/dashboard.py`, the monitoring dashboard currently includes charts for:
+`app/dashboard.py` reads live PostgreSQL telemetry through a `LEFT JOIN` between `incident_queries` and `feedback`.
 
-1. **Answer-generation latency distribution**
-   - Histogram of `latency_seconds` from `expert_llm_comparison_reranked_v1.csv`.
-   - Shows median and distribution of answer-generation times across models.
+The dashboard provides five live charts:
 
-2. **Judge preferences: Gemini 3.5 Flash-Lite as judge**
-   - Bar chart of winner counts from `expert_llm_judged_reranked_35_as_judge.csv`.
-   - Shows how often 3.5-as-judge prefers 3.1 vs 3.5 outputs.
+1. User feedback ratio.
+2. Incident query volume by date.
+3. Most frequently retrieved ATT&CK technique IDs.
+4. Retrieval-latency distribution in milliseconds.
+5. Feedback volume over time.
 
-3. **Judge preferences: Gemini 3.1 Flash-Lite as judge**
-   - Bar chart of winner counts from `expert_llm_judged_reranked_31_as_judge.csv`.
-   - Shows how often 3.1-as-judge prefers 3.1 vs 3.5 outputs.
+It also provides a recent incident-query logs table.
 
-4. **Retrieval method comparison**
-   - Grouped bar chart of MRR and Hit@3 for:
-     - Vector only.
-     - Vector + rerank.
-     - Query rewrite + vector + rerank.
-   - Currently uses hard-coded metrics from DEC-018 and DEC-019; future work can read dynamically from benchmark CSVs.
+The dashboard is intentionally operational. It does not load CSV feedback files, judge-preference artefacts, retrieval-comparison constants, or judge-agreement reports.
 
-5. **Judge agreement rate**
-   - Pie chart from `judge_agreement_summary.csv`.
-   - Shows proportion of cases where 3.1-as-judge and 3.5-as-judge agree vs disagree.
+### Interpretation and limitations
 
-6. **User feedback distribution**
-   - Bar chart of thumbs-up vs thumbs-down counts from `data/feedback/feedback.csv`.
-   - Displays "No feedback collected yet" if the file is missing or empty.
-
-### Data sources
-
-The dashboard reads from:
-
-- `data/evaluation_reports/reranked/expert_llm_comparison_reranked_v1.csv`
-- `data/evaluation_reports/reranked/expert_llm_judged_reranked_31_as_judge.csv`
-- `data/evaluation_reports/reranked/expert_llm_judged_reranked_35_as_judge.csv`
-- `data/evaluation_reports/reranked/judge_agreement_summary.csv`
-- `data/feedback/feedback.csv` (optional)
-
-If a file is missing, the corresponding chart shows an error message or info notice rather than failing the entire dashboard.
-
-### Usage
-
-Run the dashboard via:
-
-```bash
-make dashboard
-# or
-PYTHONPATH=. uv run streamlit run app/dashboard.py --server.fileWatcherType=none
-```
-
-The dashboard is also accessible as a tab in the main Streamlit app (`app/home.py`).
-
-### Limitations and future work
-
-- The retrieval-comparison chart currently uses hard-coded metrics; future versions can read dynamically from benchmark CSVs.
-- Additional views (e.g. per-case inspection, retrieval diagnostics, disagreement-case browser) can be added as new dashboard pages or tabs.
-- Feedback volume is currently limited and should not be treated as a representative measure of answer quality.
+- Runtime feedback is an optional user signal, not controlled benchmark evidence.
+- Low feedback volume must not be interpreted as a representative measure of answer quality.
+- The application remains a temporary single-instance demonstration deployment rather than a production observability platform.
+- PostgreSQL persistence improves integrity and inspectability compared with a local append-only CSV file, but the current deployment does not include managed backups, external monitoring, production secret management, high availability, or multi-instance scaling.
 
 ---
 
@@ -746,7 +720,7 @@ Reranked evaluation artefacts (v1):
 - `data/evaluation_reports/reranked/judge_disagreements.csv`
 - `data/evaluation_reports/reranked/manual_review_results.csv`
 
-These artefacts are committed for marker inspection under DEC-023. They allow the evaluation evidence and dashboard charts to be inspected without rerunning API-bound jobs.
+These artefacts are committed for marker inspection under DEC-023. They allow the offline evaluation evidence to be inspected without rerunning API-bound jobs.
 
 Do not commit reports containing external narrative text unless redistribution permissions have been reviewed. Public artefacts should prefer aggregate metrics, source references, case identifiers or hashes where appropriate, and derived diagnostics that do not reproduce upstream narratives.
 

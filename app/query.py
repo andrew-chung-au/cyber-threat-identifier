@@ -15,7 +15,7 @@ import streamlit as st
 
 from src.database.db_connection import get_connection
 from src.generation.answer_generator import generate_candidate_answer
-from src.monitoring.feedback_store import save_feedback
+from src.monitoring.feedback_store import save_feedback, save_incident_query
 from src.retrieval.embedding_model import get_embedding_model
 from src.retrieval.generation_context import fetch_records_for_generation
 from src.retrieval.reranked_vector import retrieve_reranked_vector
@@ -125,6 +125,16 @@ def render_query_interface() -> None:
                     "feedback_submitted": False,
                 }
 
+                # Log the generated query and answer immediately
+                save_incident_query(
+                    query_id=st.session_state.analysis_result["query_id"],
+                    query_text=st.session_state.analysis_result["query"],
+                    answer_text=st.session_state.analysis_result["answer"].model_dump_json(),
+                    model_id=st.session_state.analysis_result["model_id"],
+                    retrieved_technique_ids=st.session_state.analysis_result["retrieved_ids"],
+                    retrieval_ms=st.session_state.analysis_result["retrieval_ms"],
+                )
+
                 st.session_state.sample_loaded = False
 
             except Exception as error:
@@ -203,17 +213,13 @@ def render_query_interface() -> None:
 
     if selected_feedback:
         try:
-            saved_path = save_feedback(
+            save_feedback(
                 query_id=result["query_id"],
                 feedback=selected_feedback,
-                model_id=result["model_id"],
-                query_text=result["query"],
-                answer_text=result["answer"].model_dump_json(),
-                retrieved_technique_ids=result["retrieved_ids"],
             )
 
             st.session_state.analysis_result["feedback_submitted"] = True
-            st.success(f"Feedback saved to `{saved_path}`.")
+            st.success("Feedback saved securely to PostgreSQL.")
             st.rerun()
 
         except Exception as error:

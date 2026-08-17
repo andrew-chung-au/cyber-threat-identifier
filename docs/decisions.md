@@ -8,31 +8,35 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 
 ## Decision index
 
-| ID      | Decision                                         | Status            | Date       |
-|---------|--------------------------------------------------|-------------------|------------|
-| DEC-001 | Project scope                                    | Accepted          | 2026-07-27 |
-| DEC-002 | Core corpus selection                            | Accepted          | 2026-07-27 |
-| DEC-003 | Product naming and ATT&CK references             | Accepted          | 2026-07-27 |
-| DEC-004 | Public repository and attribution                | Accepted; updated | 2026-08-16 |
-| DEC-005 | Repository structure                             | Accepted          | 2026-07-29 |
-| DEC-006 | Execution convention                             | Accepted; updated | 2026-08-16 |
-| DEC-007 | Source provenance and versioning                 | Accepted          | 2026-07-29 |
-| DEC-008 | Retrieval unit and chunking                      | Accepted          | 2026-07-29 |
-| DEC-009 | Processed corpus schema and snapshot policy      | Accepted          | 2026-07-30 |
-| DEC-010 | Database and embedding pipeline                  | Accepted          | 2026-07-29 |
-| DEC-011 | Embedding baseline                               | Accepted baseline | 2026-07-30 |
-| DEC-012 | Vector index strategy                            | Accepted          | 2026-07-30 |
-| DEC-013 | Documentation strategy                           | Accepted          | 2026-07-30 |
-| DEC-014 | External evaluation benchmark strategy           | Accepted; updated | 2026-08-16 |
-| DEC-015 | Default retrieval method for v1                  | Superseded        | 2026-07-31 |
-| DEC-016 | Retrieval-module refactor and shared helpers     | Accepted          | 2026-07-31 |
-| DEC-017 | Answer-generation pipeline and output contract   | Accepted baseline; updated | 2026-08-16 |
-| DEC-018 | Default retrieval configuration with reranking   | Accepted; updated | 2026-08-16 |
-| DEC-019 | User query rewriting evaluation and decision     | Accepted          | 2026-08-13 |
-| DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted | 2026-08-16 |
-| DEC-021 | Default answer-generation model selection        | Accepted          | 2026-08-16 |
-| DEC-022 | Docker Compose execution and automated ingestion | Accepted          | 2026-08-16 |
-| DEC-023 | Reviewable evaluation artefacts                  | Accepted          | 2026-08-16 |
+| ID      | Decision                                             | Status                     | Date       |
+|---------|------------------------------------------------------|----------------------------|------------|
+| DEC-001 | Project scope                                        | Accepted                   | 2026-07-27 |
+| DEC-002 | Core corpus selection                                | Accepted                   | 2026-07-27 |
+| DEC-003 | Product naming and ATT&CK references                 | Accepted                   | 2026-07-27 |
+| DEC-004 | Public repository and attribution                    | Accepted; updated          | 2026-08-16 |
+| DEC-005 | Repository structure                                 | Accepted                   | 2026-07-29 |
+| DEC-006 | Execution convention                                 | Accepted; updated          | 2026-08-16 |
+| DEC-007 | Source provenance and versioning                     | Accepted                   | 2026-07-29 |
+| DEC-008 | Retrieval unit and chunking                          | Accepted                   | 2026-07-29 |
+| DEC-009 | Processed corpus schema and snapshot policy          | Accepted                   | 2026-07-30 |
+| DEC-010 | Database and embedding pipeline                      | Accepted                   | 2026-07-29 |
+| DEC-011 | Embedding baseline                                   | Accepted baseline          | 2026-07-30 |
+| DEC-012 | Vector index strategy                                | Accepted                   | 2026-07-30 |
+| DEC-013 | Documentation strategy                               | Accepted                   | 2026-07-30 |
+| DEC-014 | External evaluation benchmark strategy               | Accepted; updated          | 2026-08-16 |
+| DEC-015 | Default retrieval method for v1                      | Superseded                 | 2026-07-31 |
+| DEC-016 | Retrieval-module refactor and shared helpers         | Accepted                   | 2026-07-31 |
+| DEC-017 | Answer-generation pipeline and output contract       | Accepted baseline; updated | 2026-08-16 |
+| DEC-018 | Default retrieval configuration with reranking       | Accepted; updated          | 2026-08-16 |
+| DEC-019 | User query rewriting evaluation and decision         | Accepted                   | 2026-08-13 |
+| DEC-020 | Pairwise LLM-as-judge evaluation for answer generation | Accepted                 | 2026-08-16 |
+| DEC-021 | Default answer-generation model selection            | Accepted                   | 2026-08-16 |
+| DEC-022 | Docker Compose execution and automated ingestion     | Accepted                   | 2026-08-16 |
+| DEC-023 | Reviewable evaluation artefacts                      | Accepted                   | 2026-08-16 |
+| DEC-024 | Temporary EC2 deployment for demonstration           | Accepted                   | 2026-08-17 |
+| DEC-025 | Explicit database initialization during deployment   | Accepted                   | 2026-08-17 |
+| DEC-026 | Separate public sample queries from evaluation data  | Accepted                   | 2026-08-17 |
+| DEC-027 | PostgreSQL runtime telemetry and feedback persistence | Accepted                  | 2026-08-18 |
 
 ---
 
@@ -1586,5 +1590,62 @@ The Query interface shall handle a missing or malformed public sample file grace
   - internal or restricted evaluation cases;
   - committed benchmark summaries;
   - runtime feedback collected during the temporary demo.
+
+---
+
+## DEC-027 — PostgreSQL runtime telemetry and feedback persistence
+
+**Status:** Accepted  
+**Date:** 2026-08-18
+
+### Context
+
+The initial Streamlit feedback implementation persisted runtime feedback through a local CSV file. That approach coupled feedback with query metadata, provided limited relational integrity, and was not appropriate for reliable runtime telemetry in the Docker Compose demonstration environment.
+
+The application requires telemetry for successful Query analyses even when users do not submit feedback. The Dashboard also needs a live queryable source for operational views such as query volume, retrieval latency, commonly retrieved ATT&CK techniques, feedback ratio, and recent query logs.
+
+### Decision
+
+Replace CSV-based runtime feedback persistence with PostgreSQL telemetry tables.
+
+Use the following schema:
+
+- `incident_queries` stores one telemetry record for each successfully generated analysis.
+- `feedback` stores optional user feedback linked to an existing query through `query_id`.
+- `feedback.query_id` references `incident_queries.query_id` with `ON DELETE CASCADE`.
+
+After a successful Query analysis, `app/query.py` creates a UUID `query_id` and calls `save_incident_query()` immediately after answer generation.
+
+The logged query record includes:
+
+- Incident narrative
+- Serialised generated answer
+- Configured model ID
+- Retrieved ATT&CK technique IDs
+- Total retrieval latency
+- Creation timestamp
+
+User feedback is stored separately when the user selects **Helpful** or **Not helpful**.
+
+The Dashboard reads live telemetry by using a SQL `LEFT JOIN` between `incident_queries` and `feedback`. This preserves query records that do not yet have a feedback rating.
+
+Telemetry write failures are logged but do not block the user-facing Query result.
+
+### Alternatives considered
+
+- Retain `data/feedback/feedback.csv` as the runtime feedback store.
+- Log only feedback events and omit query events where feedback is absent.
+- Store query telemetry and feedback in one denormalised table.
+- Use a managed cloud monitoring platform.
+- Add a separate event-streaming or analytics service.
+
+### Consequences
+
+- Runtime telemetry is independent of optional user feedback.
+- The application can inspect query events, model IDs, retrieved technique IDs, and retrieval latency directly through PostgreSQL.
+- The Dashboard no longer depends on a local CSV feedback file or offline evaluation artefacts.
+- Foreign-key linkage improves traceability between feedback and the query that received it.
+- The current `feedback` table permits multiple feedback events for one query. This supports an event-history model but may require a uniqueness constraint or upsert behaviour if the product rule becomes one rating per query.
+- PostgreSQL persistence improves integrity and inspectability for the demonstration deployment, but the temporary single-instance EC2 environment remains non-production and does not provide managed observability, backups, high availability, authentication, or production secret management.
 
 ---

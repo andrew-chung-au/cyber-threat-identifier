@@ -23,7 +23,7 @@ The deployed application exposes the selected default v1 RAG path:
 - Vector retrieval plus local cross-encoder reranking
 - Structured answer generation with `gemini-3.1-flash-lite`
 - Evidence inspection with retrieved ATT&CK technique metadata
-- Monitoring dashboard with judge preferences, agreement rate, retrieval comparison, latency, and feedback
+- PostgreSQL-backed runtime telemetry dashboard with feedback ratio, query volume, retrieved-technique frequency, retrieval latency, and recent query logs
 - Evaluation Review tab for blinded manual adjudication of judge-disagreement cases
 
 **Important:** The EC2 instance is a temporary demonstration environment. It does not include HTTPS, a custom domain, or managed secrets. It is intended for reviewer access and portfolio demonstration only.
@@ -37,7 +37,7 @@ A reviewer can verify the main implemented capabilities without rebuilding the p
 1. Open the live Streamlit application URL.
 2. Paste a short cyber incident narrative into the **Query** tab.
 3. Inspect the returned structured answer and retrieved ATT&CK technique evidence.
-4. Open the **Dashboard** to verify telemetry, judge preferences, agreement rate, retrieval comparison, and feedback charts.
+4. Open the **Dashboard** to verify live PostgreSQL telemetry: feedback ratio, query volume, retrieved-technique frequency, retrieval latency, and recent query logs.
 5. Optionally open the **Evaluation Review** tab to inspect a sample disagreement case and the blinded review workflow.
 6. Use the [README assessment evidence map](../README.md#assessment-evidence) to locate repository evidence for each criterion.
 
@@ -69,7 +69,7 @@ The rubric allows up to three additional bonus points for exceptional work not c
 | LLM evaluation | 2/2 | Multiple answer-generation models evaluated with reciprocal judging and manual review; best model selected |
 | Interface | 2/2 | Streamlit UI deployed for reviewer access (local and EC2) |
 | Ingestion pipeline | 2/2 | Fully automated scripted ingestion via Docker Compose (no dedicated orchestrator required) |
-| Monitoring | 2/2 | User feedback plus dashboard with at least five charts |
+| Monitoring | 2/2 | PostgreSQL-backed user feedback plus five live telemetry charts and a recent incident-log table |
 | Containerization | 2/2 | Database, ingestion, and application services run through Docker Compose |
 | Reproducibility | 2/2 | Accessible source data, pinned dependencies, runbook, corpus snapshot, and Docker runtime |
 | Hybrid search | +1 | Implemented and evaluated |
@@ -249,7 +249,7 @@ The Streamlit application in `app/home.py` provides:
 
 - **Home** — project overview, data sources, and ATT&CK attribution
 - **Query** — incident narrative input, reranked retrieval, structured answer generation, retrieved-technique inspection, and feedback capture
-- **Dashboard** — monitoring dashboard with evaluation charts
+- **Dashboard** — PostgreSQL-backed runtime telemetry dashboard with five operational views
 - **Evaluation Review** — blinded adjudication of judge-disagreement cases
 
 The application is accessible both locally and via the live EC2 deployment.
@@ -292,24 +292,30 @@ This satisfies the course guidance that a fully automated scripted pipeline (e.g
 
 ## Monitoring — 2/2
 
-The Streamlit application includes both user-feedback collection and a monitoring dashboard with at least five charts.
+The Streamlit application includes user-feedback collection and a PostgreSQL-backed runtime telemetry dashboard.
 
-Each interaction can be submitted as **Helpful** or **Not helpful** feedback, persisted to `data/feedback/feedback.csv` with query, answer, model, and retrieved technique metadata.
+After a successful analysis, the Query workflow attempts to write an `incident_queries` record to PostgreSQL. This record stores the incident narrative, generated answer, configured model ID, retrieved ATT&CK technique IDs, retrieval latency, and timestamp. Logging occurs independently of whether the user submits feedback.
 
-The Monitoring Dashboard includes:
+When a user selects **Helpful** or **Not helpful**, the application writes the optional rating to the `feedback` table, linked to the original query through `query_id`.
 
-1. Answer-generation latency distribution
-2. Judge preferences: Gemini 3.5 Flash-Lite as judge
-3. Judge preferences: Gemini 3.1 Flash-Lite as judge
-4. Retrieval method comparison (MRR & Hit@3)
-5. Judge agreement rate
-6. User feedback distribution
+The Dashboard queries live telemetry through a SQL `LEFT JOIN` and provides five charts:
+
+1. **User Feedback Ratio**
+2. **Incident Query Volume**
+3. **Top Retrieved ATT&CK Techniques**
+4. **Retrieval Latency**
+5. **Feedback Volume Over Time**
+
+It also provides a **Recent Incident Logs** table showing recent query timestamps, query IDs, model IDs, retrieval latency, feedback state, and truncated query text.
 
 **Evidence:**
 
-- `app/dashboard.py`
+- `src/database/db_init.py`
 - `src/monitoring/feedback_store.py`
-- `data/feedback/feedback.csv`
+- `app/query.py`
+- `app/dashboard.py`
+- PostgreSQL tables: `incident_queries` and `feedback`
+- [Runbook](runbook.md)
 
 ---
 
@@ -443,7 +449,7 @@ The strongest parts of the project are currently:
 - Reciprocal pairwise judging plus manual review of disagreements for model selection
 - Selected defaults based on recorded benchmark results
 - A deployed Streamlit interface with inspectable evidence (local and EC2)
-- Feedback collection and a monitoring dashboard with more than five charts
+- PostgreSQL-backed query telemetry, linked user-feedback capture, five live telemetry charts, and a recent incident-log table
 - Full Docker Compose runtime coverage
 - Reproducible local and cloud deployment documentation
 - Explicit separation of public sample queries from restricted expert-evaluation data

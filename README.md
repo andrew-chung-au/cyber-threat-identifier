@@ -8,7 +8,9 @@ It helps analysts inspect ranked technique candidates, ATT&CK descriptions, and 
 >
 > - The deployed retrieval path uses pgvector candidate retrieval plus local cross-encoder reranking.
 > - The selected answer-generation model is `gemini-3.1-flash-lite`.
-> - The application includes a Streamlit Query interface, monitoring dashboard, feedback capture, and blinded evaluation-review workflow.
+> - The application includes a Streamlit Query interface, PostgreSQL-backed runtime telemetry dashboard, feedback capture, and blinded evaluation-review workflow.
+> - Runtime telemetry and optional user feedback are stored in PostgreSQL tables: `incident_queries` and `feedback`.
+> - A successful Query analysis attempts to log the narrative, generated answer, configured model, retrieved ATT&CK IDs, and retrieval latency immediately, before optional user feedback is submitted.
 > - Retrieval and answer-generation configurations were evaluated on a 226-case Expert-derived implementation-comparison set.
 > - The current benchmark is not a frozen held-out final benchmark.
 > - Docker Compose is the canonical local runtime and ingestion path.
@@ -32,6 +34,7 @@ For reviewers short on time, here is a high-level summary of the system's archit
 *   **Advanced Retrieval:** The system moves beyond basic vector search by implementing a two-stage retrieval pipeline: initial semantic search via `all-MiniLM-L6-v2`, followed by local cross-encoder document reranking (`ms-marco-MiniLM-L-6-v2`) to dramatically improve candidate ordering.
 *   **Grounded Answer Generation:** Using `gemini-3.1-flash-lite`, the system generates structured, analyst-friendly assessments that are strictly grounded in the retrieved ATT&CK context, complete with uncertainty flags.
 *   **Rigorous Evaluation:** Models and retrieval methods were benchmarked against a 226-case expert-derived dataset. The final architecture was selected based on reciprocal pairwise LLM-as-judge evaluation and blinded human manual review.
+* **Runtime Telemetry:** Query events and optional user feedback are persisted in PostgreSQL. The live dashboard queries `incident_queries` and `feedback` to show query volume, retrieved-technique frequency, retrieval latency, feedback ratio, feedback volume over time, and recent query logs.
 *   **Full Containerization:** The database, Streamlit UI, and ingestion pipelines are entirely reproducible via Docker Compose.
 
 ---
@@ -65,7 +68,7 @@ You do not need to clone the repository to review the main application workflow.
    - A retrieval-grounding note.
    - An uncertainty note.
    - Feedback controls.
-6. Open **Dashboard** to inspect answer latency, retrieval comparison, judge preferences, judge agreement, and feedback charts.
+6. Open **Dashboard** to inspect five live telemetry charts—feedback ratio, query volume, retrieved-technique frequency, retrieval latency, and feedback volume—plus the recent incident-log table.
 7. Optionally open **Evaluation Review** to inspect the completed manual-review results.
 
 The Query workflow uses the selected v1 path:
@@ -185,7 +188,9 @@ The current retrieval and answer-generation results were produced using a 226-ca
 - Cross-judge agreement analysis and blinded manual review of all 55 reranked judge-disagreement cases.
 - Model-selection decision: `gemini-3.1-flash-lite` selected as default v1 answer-generation model (DEC-021).
 - Streamlit analyst-facing UI and monitoring dashboard.
-- Persisted feedback capture.
+- PostgreSQL-backed runtime telemetry and optional user-feedback persistence using `incident_queries` and `feedback`.
+- Immediate query-event logging after successful analysis, independent of optional feedback submission.
+- Live SQL-backed dashboard with five operational charts and a recent incident-log table.
 - Application Dockerfile and Compose configuration for PostgreSQL, Streamlit, and automated ingestion.
 - Committed evaluation artefacts for marker inspection.
 
@@ -207,7 +212,7 @@ The project includes a Streamlit-based analyst-facing UI and monitoring dashboar
 
 - **Home**: Overview, data sources, and ATT&CK usage information.
 - **Query**: Incident narrative input, retrieval with reranking, structured answer generation, retrieved-technique inspection, and feedback capture.
-- **Dashboard**: Monitoring dashboard with evaluation metrics and charts.
+- **Dashboard**: Monitoring dashboard with metrics and charts.
 - **Evaluation Review**: Manual review workflow for cases where the two LLM judges disagree.
 
 ---
@@ -220,10 +225,9 @@ _Representative structure (simplified and alphabetically ordered):_
 cyber-threat-identifier/
 ├── app/                          # Streamlit UI and monitoring dashboard
 ├── compose.yaml                  # Docker Compose runtime (PostgreSQL, Streamlit, ingestion)
-├── data/                         # Processed corpus, evaluation inputs/outputs, feedback
+├── data/                         # Processed corpus and evaluation inputs/outputs
 │   ├── eval/                     # Expert-derived retrieval benchmark cases
 │   ├── evaluation_reports/       # Retrieval and LLM-evaluation CSVs
-│   ├── feedback/                 # Persisted user feedback
 │   ├── processed/                # Reviewed ATT&CK techniques JSONL
 │   └── source_manifest.csv       # ATT&CK source provenance
 ├── docs/                         # Documentation and assessment artefacts
@@ -239,7 +243,7 @@ cyber-threat-identifier/
 │   ├── evaluation/               # Retrieval benchmarks, LLM-as-judge, and manual review
 │   ├── generation/               # Answer-generation prompts and orchestration
 │   ├── ingestion/                # ATT&CK download and extraction scripts
-│   ├── monitoring/               # Feedback persistence and helpers
+│   ├── monitoring/               # PostgreSQL telemetry and feedback persistence
 │   └── retrieval/                # Embedding, text, vector, hybrid, reranking, and rewriting
 ├── uv.lock                       # Locked Python dependency versions
 └── .env.example                  # Example environment configuration
