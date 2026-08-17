@@ -38,7 +38,7 @@ For corpus provenance, schema, processing rules, and data-quality notes, see [`d
 
 ## DEC-001 — Project scope
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-27
 
 ### Context
@@ -70,7 +70,7 @@ Version 1 will retrieve and present relevant technique records with source-groun
 
 ## DEC-002 — Core corpus selection
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-27
 
 ### Context
@@ -102,7 +102,7 @@ Version 1 includes active Enterprise ATT&CK `attack-pattern` objects: techniques
 
 ## DEC-003 — Product naming and ATT&CK references
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-27
 
 ### Context
@@ -132,7 +132,7 @@ Use **MITRE ATT&CK®** in the first substantive documentation reference and **AT
 
 ## DEC-004 — Public repository and attribution
 
-**Status:** Accepted; updated 2026-08-16  
+**Status:** Accepted; updated 2026-08-16
 **Date:** 2026-07-30
 
 ### Context
@@ -196,7 +196,7 @@ This project is independent of the upstream authors and does not imply their end
 
 ## DEC-005 — Repository structure
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-29
 
 ### Context
@@ -242,7 +242,7 @@ Use `__init__.py` files in package directories. Place external benchmark inspect
 
 ## DEC-006 — Execution convention
 
-**Status:** Accepted; updated 2026-08-16  
+**Status:** Accepted; updated 2026-08-16
 **Date:** 2026-07-29
 
 ### Context
@@ -292,7 +292,7 @@ Do not use plain system `python` for Compose ingestion stages because the projec
 
 ## DEC-007 — Source provenance and versioning
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-29
 
 ### Context
@@ -327,7 +327,7 @@ Before reporting comparable retrieval or answer-evaluation results, pin the loca
 
 ## DEC-008 — Retrieval unit and chunking
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-29
 
 ### Context
@@ -367,7 +367,7 @@ Each technique record produces:
 
 ## DEC-009 — Processed corpus schema and snapshot policy
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-30
 
 ### Context
@@ -422,7 +422,7 @@ Treat the official Enterprise ATT&CK STIX bundle as the authoritative source. Tr
 
 ## DEC-010 — Database and embedding pipeline
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-29
 
 ### Context
@@ -455,7 +455,7 @@ Use PostgreSQL with pgvector. Store canonical technique fields and vectors in `t
 
 ## DEC-011 — Embedding baseline
 
-**Status:** Accepted baseline  
+**Status:** Accepted baseline
 **Date:** 2026-07-30
 
 ### Context
@@ -489,7 +489,7 @@ This is an accepted implementation baseline, not a final default-model selection
 
 ## DEC-012 — Vector index strategy
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-30
 
 ### Context
@@ -526,7 +526,7 @@ Evaluate the HNSW index only if later corpus size, latency measurements, or depl
 
 ## DEC-013 — Documentation strategy
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-30
 
 ### Context
@@ -572,7 +572,7 @@ Keep detailed rationale in the relevant evidence or decision document rather tha
 
 ## DEC-014 — External evaluation benchmark strategy
 
-**Status:** Accepted; updated 2026-08-16  
+**Status:** Accepted; updated 2026-08-16
 **Date:** 2026-07-30
 
 ### Context
@@ -647,7 +647,7 @@ The committed evaluation inputs and reports are review artefacts derived from th
 
 ## DEC-015 — Default retrieval method for v1
 
-**Status:** Superseded by DEC-018  
+**Status:** Superseded by DEC-018
 **Date:** 2026-07-31
 
 ### Context
@@ -682,7 +682,7 @@ Retain **text retrieval** and **hybrid retrieval (vector + text, RRF)** as imple
 
 ## DEC-016 — Retrieval-module refactor and shared helpers
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-31
 
 ### Context
@@ -726,7 +726,7 @@ Refactor retrieval and evaluation code into clearer modules with shared helpers:
 
 ## DEC-017 — Answer-generation pipeline and output contract
 
-**Status:** Accepted baseline; updated 2026-08-16  
+**Status:** Accepted baseline; updated 2026-08-16
 **Date:** 2026-07-31
 
 ### Context
@@ -836,8 +836,8 @@ Treat the output contract as a stable high-level baseline. Prompt wording, model
 
 ## DEC-018 — Default retrieval configuration with reranking
 
-**Status:** Accepted; updated 2026-08-16  
-**Date:** 2026-08-12  
+**Status:** Accepted; updated 2026-08-16
+**Date:** 2026-08-12
 **Supersedes:** DEC-015 for the default v1 retrieval configuration
 
 ### Context
@@ -935,7 +935,7 @@ Keep vector-only retrieval available as a fallback option for future interface o
 
 ## DEC-019 — User query rewriting evaluation and decision
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-13
 
 ### Context
@@ -1024,8 +1024,8 @@ Rate limiting is implemented in `src/llm_client.py` with an optional `RateLimite
 
 ## DEC-020 — Pairwise LLM-as-judge evaluation for answer generation
 
-**Status:** Accepted  
-**Date:** 2026-08-16  
+**Status:** Accepted
+**Date:** 2026-08-16
 **Supersedes:** The answer-model comparison and manual-review plan previously described in the earlier DEC-020 draft.
 
 ### Context
@@ -1186,8 +1186,8 @@ DEC-021 records the final human-adjudicated model-selection decision.
 
 ## DEC-021 — Default answer-generation model selection
 
-**Status:** Accepted  
-**Date:** 2026-08-16  
+**Status:** Accepted
+**Date:** 2026-08-16
 **Supersedes:** The deferred model-selection state described in the earlier DEC-020 draft.
 
 ### Context
@@ -1275,7 +1275,7 @@ This result is supporting diagnostic evidence only. It was not combined with the
 
 ## DEC-022 — Docker Compose execution and automated ingestion
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-16
 
 ### Context
@@ -1355,7 +1355,7 @@ Technique count: 697
 
 ## DEC-023 — Reviewable evaluation artefacts
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-08-16
 
 ### Context
@@ -1389,3 +1389,202 @@ Licence declared by upstream: CC BY 4.0
 - The dashboard can render completed offline evaluation charts immediately after the repository is cloned.
 - Runtime feedback remains an honest empty state until a real user submits feedback.
 - Any future change to the source revision, corpus, evaluation set, or reported metrics must update the relevant evidence and documentation together.
+
+---
+
+## DEC-024 — Temporary EC2 deployment for demonstration
+
+**Status:** Accepted
+**Date:** 2026-08-17
+
+### Context
+
+The v1 application has been deployed to an AWS EC2 instance for a temporary demonstration period. The deployment provides a publicly reachable Streamlit interface backed by PostgreSQL with pgvector and local embedding/reranking models.
+
+The instance is intended for demonstration and portfolio review, not production operation. It does not currently provide production-grade authentication, TLS termination, secret management, backups, high availability, or operational monitoring.
+
+### Decision
+
+Use a single Ubuntu 24.04 EC2 instance with Docker Compose as the temporary v1 demonstration environment.
+
+The deployment consists of:
+
+- PostgreSQL with the `pgvector/pgvector:pg16` image.
+- A Streamlit application container.
+- An on-demand ingestion container using the Compose `ingest` profile.
+- A persistent PostgreSQL volume.
+- A persistent Hugging Face model-cache volume.
+- The configured v1 retrieval path:
+  - sentence-transformer embedding;
+  - PostgreSQL/pgvector vector retrieval;
+  - local CPU cross-encoder reranking.
+- The configured v1 answer-generation model:
+  - `gemini-3.1-flash-lite`.
+
+The EC2 instance is temporary and should be shut down when the demonstration period ends.
+
+### Alternatives considered
+
+- Deploying to a managed container or platform service.
+- Running the application locally only.
+- Building a production-style multi-instance deployment.
+- Publishing the application directly without a controlled demonstration environment.
+
+### Consequences
+
+- The application can be demonstrated through a reproducible containerized environment.
+- The deployment is simple enough to rebuild and inspect during the current project stage.
+- The demonstration environment has a single-instance availability risk.
+- Public exposure must be limited through security-group rules.
+- Port `8501` should be restricted to intended demonstrator IP addresses.
+- PostgreSQL port `5432` should not be publicly accessible; the host port mapping should be removed or restricted unless host-level database access is explicitly required.
+- The deployment must not be described as production-ready.
+- API credentials must be supplied through environment configuration and must never be committed, displayed, or included in documentation.
+- The instance, volumes, public address, and runtime feedback are operational artefacts rather than permanent project dependencies.
+
+---
+
+## DEC-025 — Explicit database initialization during deployment
+
+**Status:** Accepted
+**Date:** 2026-08-17
+
+### Context
+
+The repository already contains `src/database/db_init.py`, which creates the PostgreSQL `vector` extension and the application schema. However, the initial deployment command:
+
+```bash
+docker compose up -d --build
+```
+
+starts PostgreSQL and Streamlit but does not execute the Compose `ingest` profile. A new PostgreSQL volume therefore contains an initialized database server without the application schema, pgvector extension, or loaded technique records.
+
+This caused the deployed application to report:
+
+```text
+vector type not found in the database
+```
+
+The failure was a deployment-instruction gap rather than a missing implementation in `db_init.py`.
+
+### Decision
+
+Treat database initialization and data ingestion as an explicit one-off deployment step for every new or empty database volume.
+
+The documented deployment sequence must distinguish between:
+
+1. Starting PostgreSQL and the application services.
+2. Running the one-off ingestion profile.
+3. Verifying the database and embeddings.
+4. Starting or restarting the Streamlit application for normal use.
+
+The canonical initialization command is:
+
+```bash
+docker compose --profile ingest up --build
+```
+
+The ingestion profile must run, in order:
+
+```text
+download ATT&CK data
+extract active technique records
+initialize the pgvector extension and schema
+load technique records
+generate embeddings
+```
+
+The application must not claim to be ready for query use until the ingestion step has completed successfully.
+
+### Alternatives considered
+
+- Running only `docker compose up -d --build`.
+- Mounting a PostgreSQL init SQL file that creates only the `vector` extension.
+- Running `db_init.py` manually inside the Streamlit container.
+- Making Streamlit run database initialization automatically on every startup.
+
+### Consequences
+
+- Clean deployments are reproducible when the documented ingestion step is followed.
+- Existing database volumes can be initialized without destroying data.
+- A new deployment requires one additional explicit command before normal query use.
+- PostgreSQL's `/docker-entrypoint-initdb.d/` mechanism is insufficient by itself for this application because it runs only when the database directory is first created and does not load the application technique corpus or generate embeddings.
+- The deployment documentation must include a readiness check that confirms:
+  - the `vector` extension exists;
+  - the `techniques` table exists;
+  - technique records are loaded;
+  - embeddings are present;
+  - Streamlit's health endpoint responds successfully.
+- Future automation may add a dedicated migration or readiness mechanism, but it must preserve the separation between database initialization, data loading, and embedding generation.
+
+---
+
+## DEC-026 — Separate public sample queries from restricted expert evaluation data
+
+**Status:** Accepted
+**Date:** 2026-08-17
+
+### Context
+
+The Query interface originally loaded sample narratives from:
+
+```text
+data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv
+```
+
+The broader expert-derived evaluation material includes threat-report passages and generated evaluation artefacts whose redistribution rights and source provenance require separate review. Some records are derived from or closely resemble third-party vendor and researcher reporting.
+
+These expert cases remain valuable for internal retrieval and answer evaluation, but they should not automatically be exposed through the public demonstration interface or committed to a public repository.
+
+The public application also needs sample narratives that work in a clean checkout without private local files.
+
+### Decision
+
+Separate public demonstration samples from restricted or local expert-evaluation data.
+
+The public Query interface shall load demonstration narratives only from:
+
+```text
+data/sample_queries.json
+```
+
+The public sample file shall contain:
+
+- Short synthetic narratives; or
+- Short original summaries based on sources whose reuse and attribution position is clear.
+- Expected ATT&CK IDs where useful for demonstration or inspection.
+- Provenance notes and source references where a sample is source-informed.
+- No copied expert-evaluation passages.
+- No private evaluation outputs.
+- No dependency on `data/evaluation_reports/local/`.
+
+Expert-derived evaluation inputs and generated reports shall remain local, private, or separately controlled unless redistribution permission and provenance have been explicitly confirmed.
+
+The Query interface shall handle a missing or malformed public sample file gracefully. A missing optional sample file must not prevent users from entering and analysing their own incident narrative.
+
+### Alternatives considered
+
+- Committing the expert retrieval cases and generated rewrite CSV to the public repository.
+- Continuing to use the local expert rewrite output as the public sample source.
+- Replacing the samples with copied passages from vendor or researcher reports.
+- Removing sample queries entirely.
+- Using only fully synthetic narratives without provenance metadata.
+
+### Consequences
+
+- The public demo is reproducible from a clean checkout.
+- The Query page is no longer coupled to a private evaluation artefact.
+- Expert evaluation data can remain useful for internal benchmarking without being distributed through the application.
+- Public samples may be less realistic or less diverse than the expert-derived benchmark.
+- Synthetic narratives demonstrate application behaviour but must not be presented as evidence of benchmark performance.
+- Source-informed sample narratives require careful attribution and should be reviewed separately from technical implementation.
+- Evaluation pages and benchmark scripts must use explicit private/local paths rather than silently relying on public sample data.
+- `.gitignore` must exclude restricted local evaluation inputs, generated reports, caches, secrets, and runtime feedback where appropriate.
+- Any expert-derived data already present in repository history may require separate history and licensing review; deleting it from the latest commit does not necessarily remove it from Git history.
+- Public documentation must distinguish:
+  - public demonstration samples;
+  - internal or restricted evaluation cases;
+  - committed benchmark summaries;
+  - runtime feedback collected during the temporary demo.
+
+---

@@ -2,19 +2,23 @@
 
 This document maps the current Cyber Threat Identifier project state to the peer-review evaluation criteria. It is intended to provide an honest, easy-to-check evidence trail for reviewers and to identify remaining improvement areas.
 
-For the project overview, architecture, and rubric evidence map, see the [README](../README.md).  
-For complete local reproduction and Docker Compose commands, see the [runbook](runbook.md).  
+For the project overview, architecture, and rubric evidence map, see the [README](../README.md).
+For complete local reproduction and Docker Compose commands, see the [runbook](runbook.md).
 For retrieval and answer-generation results, see the [evaluation notes](evaluation-notes.md).
 
 ---
 
 ## Live application
 
-The application is currently running locally via Docker Compose. A cloud deployment is planned within the next 24 hours for reviewer access. Once deployed, the live URL will be:
+The application is currently running locally via Docker Compose and has been deployed to a lightweight Ubuntu-based AWS EC2 instance for reviewer access.
 
-**[Cyber Threat Identifier — Streamlit app](http://<your-ec2-public-ip>:8501/)**
+**Live deployed application:**
 
-The deployed app will expose the selected default v1 RAG path:
+**[Cyber Threat Identifier — Streamlit app](http://44.222.157.15/:8501/)**
+
+The instance runs the same Docker Compose stack used for local reproduction.
+
+The deployed application exposes the selected default v1 RAG path:
 
 - Vector retrieval plus local cross-encoder reranking
 - Structured answer generation with `gemini-3.1-flash-lite`
@@ -22,20 +26,22 @@ The deployed app will expose the selected default v1 RAG path:
 - Monitoring dashboard with judge preferences, agreement rate, retrieval comparison, latency, and feedback
 - Evaluation Review tab for blinded manual adjudication of judge-disagreement cases
 
+**Important:** The EC2 instance is a temporary demonstration environment. It does not include HTTPS, a custom domain, or managed secrets. It is intended for reviewer access and portfolio demonstration only.
+
 ---
 
 ## Reviewer quick check
 
-Once deployed, a reviewer can verify the main implemented capabilities without rebuilding the project:
+A reviewer can verify the main implemented capabilities without rebuilding the project:
 
-1. Open the live Streamlit application.
+1. Open the live Streamlit application URL.
 2. Paste a short cyber incident narrative into the **Query** tab.
 3. Inspect the returned structured answer and retrieved ATT&CK technique evidence.
 4. Open the **Dashboard** to verify telemetry, judge preferences, agreement rate, retrieval comparison, and feedback charts.
 5. Optionally open the **Evaluation Review** tab to inspect a sample disagreement case and the blinded review workflow.
 6. Use the [README assessment evidence map](../README.md#assessment-evidence) to locate repository evidence for each criterion.
 
-Until deployment is live, reviewers can reproduce the full stack locally using the runbook.
+Reviewers can also reproduce the full stack locally using the runbook if preferred.
 
 ---
 
@@ -48,10 +54,12 @@ Until deployment is live, reviewers can reproduce the full stack locally using t
 - Hybrid search evaluation — +1
 - Document reranking — +1
 - User query rewriting — +1
+- Cloud deployment — +2 (live on AWS EC2)
 
-**Planned bonus:**
+**Total self-assessed score:** 23/23
 
-- Cloud deployment — +2 (deployment planned within 24 hours)
+**Bonus points (optional, up to +3):**
+The rubric allows up to three additional bonus points for exceptional work not covered by the standard bonus categories.
 
 | Criterion | Self-assessed score | Summary |
 |---|---:|---|
@@ -59,7 +67,7 @@ Until deployment is live, reviewers can reproduce the full stack locally using t
 | Retrieval flow | 2/2 | ATT&CK knowledge base plus grounded LLM answer generation |
 | Retrieval evaluation | 2/2 | Text, vector, hybrid, reranked, and query-rewrite retrieval evaluated; best backend selected |
 | LLM evaluation | 2/2 | Multiple answer-generation models evaluated with reciprocal judging and manual review; best model selected |
-| Interface | 2/2 | Streamlit UI deployed for reviewer access |
+| Interface | 2/2 | Streamlit UI deployed for reviewer access (local and EC2) |
 | Ingestion pipeline | 2/2 | Fully automated scripted ingestion via Docker Compose (no dedicated orchestrator required) |
 | Monitoring | 2/2 | User feedback plus dashboard with at least five charts |
 | Containerization | 2/2 | Database, ingestion, and application services run through Docker Compose |
@@ -67,7 +75,7 @@ Until deployment is live, reviewers can reproduce the full stack locally using t
 | Hybrid search | +1 | Implemented and evaluated |
 | Document reranking | +1 | Implemented, evaluated, and selected as default retrieval |
 | User query rewriting | +1 | Implemented and evaluated; retained as experimental |
-| Cloud deployment | 0/2 (planned) | Deployment planned within 24 hours; not yet live |
+| Cloud deployment | +2 | Live on AWS EC2; temporary demonstration environment |
 
 ---
 
@@ -107,7 +115,7 @@ Until deployment is live, reviewers can reproduce the full stack locally using t
 
 - **0 points:** No ingestion.
 - **1 point:** Semi-automated ingestion of the dataset into the knowledge base, such as with scripts or a notebook.
-- **2 points:** Automated ingestion with a dedicated orchestration tool, such as Kestra, dlt, Airflow, or Prefect.  
+- **2 points:** Automated ingestion with a dedicated orchestration tool, such as Kestra, dlt, Airflow, or Prefect.
   *Course guidance: a fully automated scripted pipeline (e.g., via Docker Compose) satisfies the 2/2 requirement.*
 
 ### Monitoring
@@ -216,7 +224,7 @@ The evaluation compared:
 
 Both models were judged by each other in a reciprocal pairwise setup with randomised A/B presentation. All 55 judge-disagreement cases were manually reviewed blind to model identity. Gemini 3.1 Flash-Lite won 56.8% of decisive comparisons and is selected as the default v1 answer-generation model.
 
-This satisfies “multiple approaches are evaluated, and the best one is used” under the criterion, even though the evaluation uses LLM judges plus manual review rather than a formal rubric-scored human panel.
+This satisfies "multiple approaches are evaluated, and the best one is used" under the criterion, even though the evaluation uses LLM judges plus manual review rather than a formal rubric-scored human panel.
 
 **Evidence:**
 
@@ -243,6 +251,8 @@ The Streamlit application in `app/home.py` provides:
 - **Query** — incident narrative input, reranked retrieval, structured answer generation, retrieved-technique inspection, and feedback capture
 - **Dashboard** — monitoring dashboard with evaluation charts
 - **Evaluation Review** — blinded adjudication of judge-disagreement cases
+
+The application is accessible both locally and via the live EC2 deployment.
 
 **Evidence:**
 
@@ -339,7 +349,7 @@ Reproducibility support includes:
 - A committed Streamlit configuration
 - Step-by-step setup, evaluation, reset, and deployment instructions
 
-A reviewer can follow the runbook to reproduce the corpus, index, retrieval evaluation, and local UI runtime.
+A reviewer can follow the runbook to reproduce the corpus, index, retrieval evaluation, and local UI runtime. The EC2 deployment uses the same Docker Compose stack, ensuring consistent behaviour between local and cloud environments.
 
 **Evidence:**
 
@@ -398,25 +408,28 @@ Not selecting rewriting as the production default reflects the evaluation result
 - [Evaluation notes](evaluation-notes.md)
 - [Decision DEC-019](decisions.md)
 
-### Cloud deployment — planned (+2 once live)
+### Cloud deployment — implemented and live (+2)
 
-Deployment to a lightweight Ubuntu-based AWS EC2 instance is planned within the next 24 hours for reviewer access.
+The application has been deployed to a lightweight Ubuntu-based AWS EC2 instance for reviewer access.
 
-The instance will run the same Docker Compose stack used for local reproduction:
+The instance runs the same Docker Compose stack used for local reproduction:
 
 - `postgres` service with pgvector
 - `streamlit` service running Streamlit on port 8501
 - Optional `ingest` profile for corpus rebuilds
 
-The deployment is intended as a reviewer-facing demonstration environment rather than a hardened production deployment. It will not initially include HTTPS, a custom domain, or managed secrets.
+The deployment is a temporary demonstration environment. It does not include HTTPS, a custom domain, or managed secrets. It is intended for reviewer access and portfolio demonstration only.
 
-**Evidence (once live):**
+**Evidence:**
 
 - Live deployed application URL
 - `app/Dockerfile`
 - `compose.yaml`
 - [Runbook EC2 deployment instructions](runbook.md)
 - [Decision DEC-022](decisions.md)
+- [Decision DEC-024](decisions.md)
+- [Decision DEC-025](decisions.md)
+- [Decision DEC-026](decisions.md)
 
 ---
 
@@ -429,10 +442,11 @@ The strongest parts of the project are currently:
 - Comparative retrieval evaluation across five backends
 - Reciprocal pairwise judging plus manual review of disagreements for model selection
 - Selected defaults based on recorded benchmark results
-- A deployed Streamlit interface with inspectable evidence
+- A deployed Streamlit interface with inspectable evidence (local and EC2)
 - Feedback collection and a monitoring dashboard with more than five charts
 - Full Docker Compose runtime coverage
 - Reproducible local and cloud deployment documentation
+- Explicit separation of public sample queries from restricted expert-evaluation data
 
 ---
 
@@ -440,9 +454,9 @@ The strongest parts of the project are currently:
 
 The main remaining limitations are:
 
-- Cloud deployment is not yet live (planned within 24 hours).
 - The benchmark is expert-derived and relatively small, so results should not be interpreted as broad real-world performance claims.
 - Query rewriting is implemented but not part of the default interactive path due to latency.
+- The EC2 deployment is a temporary demonstration environment without production hardening (HTTPS, custom domain, managed secrets, backups, or high availability).
 
 ---
 
@@ -450,9 +464,9 @@ The main remaining limitations are:
 
 Potential next improvements are:
 
-- Complete EC2 deployment and update this document with the live URL and evidence.
 - Expand evaluation with more diverse or human-authored questions while preserving a held-out test set.
 - Investigate selective query rewriting or additional reranking variants only when evaluated against the existing benchmark.
 - Maintain clear Docker documentation for first-time bootstrap, normal restart, and full-reset workflows.
+- If the project evolves beyond a portfolio demonstration, consider production hardening: HTTPS termination, restricted security-group rules, managed secrets, backups, and operational monitoring.
 
 This document should be updated when the implementation or evidence changes. The criterion definitions should remain stable so changes in project maturity are easy to track.

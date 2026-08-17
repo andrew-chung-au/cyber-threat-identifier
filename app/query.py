@@ -6,11 +6,12 @@ Uses vector retrieval + local cross-encoder reranking (DEC-018).
 """
 from __future__ import annotations
 
+import json
 import os
 import uuid
+from pathlib import Path
 
 import streamlit as st
-import pandas as pd
 
 from src.database.db_connection import get_connection
 from src.generation.answer_generator import generate_candidate_answer
@@ -32,24 +33,31 @@ def render_query_interface() -> None:
 
     st.markdown("**Or try a sample query:**")
 
-    try:
-        rewrite_df = pd.read_csv(
-            "data/evaluation_reports/local/expert_query_rewrite_retrieval_results.csv"
-        )
-        sample_cases = rewrite_df.drop_duplicates(subset=["eval_id"]).head(10)
-        sample_options = [
-            f"{row['eval_id']}: {row['query_text'][:80]}..."
-            for _, row in sample_cases.iterrows()
-        ]
+    sample_queries_path = Path("data/sample_queries.json")
+    sample_queries: list[dict] = []
 
-        selected_sample = st.selectbox("Select:", [""] + sample_options)
-        if selected_sample:
-            eval_id = selected_sample.split(":")[0]
-            matching_row = sample_cases[sample_cases["eval_id"] == eval_id].iloc[0]
-            query = matching_row["query_text"]
-            st.info("Sample query loaded. You can edit it before running analysis.")
-    except Exception as e:
-        st.caption(f"Sample queries unavailable: {e}")
+    if sample_queries_path.exists():
+        try:
+            with sample_queries_path.open("r", encoding="utf-8") as f:
+                sample_queries = json.load(f)
+        except Exception:
+            # Silently ignore malformed sample file; do not show an error to users.
+            sample_queries = []
+
+    if sample_queries:
+        cols = st.columns(min(len(sample_queries), 3))
+        for i, sq in enumerate(sample_queries):
+            with cols[i % len(cols)]:
+                if st.button(
+                    f"Sample {i + 1}",
+                    key=f"sample_query_{sq['id']}",
+                    use_container_width=True,
+                ):
+                    query = sq["narrative"]
+                    st.info("Sample query loaded. You can edit it before running analysis.")
+    else:
+        # No sample file or empty list: show nothing, no error.
+        pass
 
     run_button = st.button(
         "🔍 Analyze",
@@ -141,7 +149,6 @@ def render_query_interface() -> None:
                 st.markdown(f"**Name:** {row['name']}")
                 st.markdown("**Description**")
                 st.write(row["description_clean"])
-
 
     st.markdown("### Feedback")
     st.caption(

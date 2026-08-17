@@ -39,6 +39,9 @@ data/external_inspection/
 # Runtime feedback may contain user-entered incident narratives and generated answers.
 data/feedback/feedback.csv
 
+# Private expert evaluation data
+data/eval/*
+
 # Local-only evaluation outputs containing external narratives.
 data/evaluation_reports/local/
 
